@@ -1,6 +1,6 @@
 # Bonos de desempeño
 
-Permite buscar empleados activos, registrar bonos por monto fijo o porcentaje del sueldo, consultar sus importes y anularlos o eliminarlos. El cálculo y las validaciones se realizan en el servidor.
+Permite buscar empleados activos, registrar bonos por monto fijo o porcentaje del sueldo, consultar sus importes y pagarlos, anularlos o eliminarlos. El cálculo y las validaciones se realizan en el servidor.
 
 ## Antes de empezar
 
@@ -28,9 +28,10 @@ Si el puerto 14333 está ocupado, cambia `SQL_PORT` por uno libre antes de conti
 docker compose up -d --wait
 docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/01_schema_seed.sql
 docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/02_bonus.sql
+docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/03_bonus_allocation.sql
 ```
 
-El primer comando espera a que SQL Server esté listo. Los scripts se ejecutan **una sola vez, en ese orden**, sobre una base nueva: el primero crea `BonusTest` y sus datos; el segundo añade los bonos.
+El primer comando espera a que SQL Server esté listo. Los scripts se ejecutan **una sola vez, en ese orden**, sobre una base nueva: `01` crea `BonusTest` y sus datos; `02` añade los bonos y `03` el detalle por proyecto. Si ya ejecutaste `01` y `02`, aplica únicamente `03`.
 
 Los datos se conservan al cerrar Docker. Para volver a abrir el proyecto, usa `docker compose up -d --wait` sin repetir los scripts ni cambiar la contraseña del volumen existente.
 
@@ -55,7 +56,11 @@ npm --prefix frontend start -- --host 127.0.0.1 --port 4200
 
 Abre [la pantalla de bonos](http://localhost:4200/bonuses). La API y su documentación están en [Swagger](http://localhost:5106/swagger). Mantén libres los puertos **4200 y 5106**; la pantalla ya apunta a esa API.
 
-Para una primera prueba, busca **Tecnología / 101** y registra un bono del **10 %** para el mes actual. Debe mostrar **500.00 de bruto, 40.00 de retención y 460.00 de neto**. Puedes anularlo o eliminarlo desde la tabla, previa confirmación.
+Deja ambas terminales abiertas mientras uses la aplicación. Si cierras una, vuelve a ejecutar su comando.
+
+Para una primera prueba, busca **Tecnología / 101** y registra un bono del **10 %** para el mes actual. Debe mostrar **500.00 de bruto, 40.00 de retención y 460.00 de neto**. Puedes pagarlo, anularlo o eliminarlo desde la tabla, previa confirmación.
+
+Al pulsar **Pagar**, el bruto se reparte en **375.00 para Portal de clientes y 125.00 para App móvil**. El bono pasa a Pagado y sus tres acciones quedan deshabilitadas. El detalle se conserva en `BonusAllocation`.
 
 ## Pruebas y compilación
 
@@ -86,5 +91,6 @@ Para detenerlos, pulsa `Ctrl+C` en las dos terminales y ejecuta `docker compose 
 - Índice único filtrado para impedir bonos vigentes duplicados, incluso simultáneos. `RowVersion` protege las modificaciones concurrentes. El borrado es lógico.
 - Sueldo, retención e importes quedan guardados con el bono. La aritmética es decimal, con redondeo a dos decimales y medio hacia arriba; la vista previa conserva esa precisión sin sustituir al servidor.
 - Periodos y auditoría usan la hora de **Lima**, independientemente del huso del equipo. La paginación y los filtros se ejecutan en SQL Server.
+- `POST /api/v1/Bonus/{bonusId}/pay` guarda detalle, estado Pagado y auditoría en una transacción. Agrupa las horas por nombre de proyecto y ordena por su primera fila; el último recibe el saldo exacto. Conserva nombre, horas e importe del momento del pago. Rechaza horas inválidas o un remanente negativo por redondeo, sin guardar cambios.
 - El operador llega en `UserCode`; la pantalla envía `candidato`, configurado en `frontend/src/environments/environment.ts`. Es una identificación de la prueba, no un inicio de sesión.
-- Está cubierto el módulo obligatorio. Pago y distribución por proyectos quedan fuera del alcance. Las pruebas unitarias del cálculo ya están incluidas.
+- Se incluyen el módulo obligatorio y los dos extras del enunciado: pago con distribución y pruebas unitarias del cálculo.
