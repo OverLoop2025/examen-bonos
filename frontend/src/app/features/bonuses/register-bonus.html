@@ -6,6 +6,7 @@
   <form [formGroup]="lookup" (ngSubmit)="search()">
     <fieldset [disabled]="saving()">
       <legend>Buscar empleado</legend>
+      <p class="hint" id="employee-lookup-help">Selecciona el área e ingresa solo el número del empleado (ej.: 101).</p>
       <div class="grid">
         <label>Área del empleado
           <select formControlName="departmentCode">
@@ -15,7 +16,7 @@
             }
           </select>
         </label>
-        <label>Número del empleado <input formControlName="employeeNumber" inputmode="numeric" /></label>
+        <label>Número del empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" aria-describedby="employee-lookup-help" /></label>
         <button class="btn btn-primary" [disabled]="searching()">{{ searching() ? 'Buscando…' : 'Buscar empleado' }}</button>
       </div>
       @if (lookup.touched && lookup.invalid) { <p class="error">Selecciona un área e ingresa un número de empleado entero positivo válido.</p> }
@@ -33,8 +34,9 @@
   <form [formGroup]="form" (ngSubmit)="save()">
     <fieldset [disabled]="saving() || !employee() || !catalogs()">
       <legend>Datos del bono</legend>
+      <p class="hint">Todos los datos del bono son obligatorios.</p>
       <div class="grid">
-        <label>Periodo del bono <input type="month" formControlName="period" min="0001-01" [max]="currentPeriod()" /></label>
+        <label>Periodo del bono (mes y año) <input type="month" formControlName="period" min="0001-01" [max]="currentPeriod()" /></label>
         <label>Tipo de bono
           <select formControlName="bonusTypeId">
             @for (type of catalogs()?.types; track type.bonusTypeId) {
