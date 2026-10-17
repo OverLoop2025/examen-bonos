@@ -1,0 +1,50 @@
+name: Comprobar aplicación
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: bonos-verificacion
+      BASE_URL: http://127.0.0.1:4200
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Preparar contraseña temporal
+        run: |
+          password="Prueba9!$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "SA_PASSWORD=$password" >> "$GITHUB_ENV"
+      - name: Construir e iniciar desde cero
+        run: docker compose up --build -d --wait
+      - name: Comprobar el navegador real
+        run: |
+          python3 -m venv /tmp/navegador
+          /tmp/navegador/bin/pip install playwright==1.64.0
+          /tmp/navegador/bin/playwright install --with-deps chromium
+          /tmp/navegador/bin/python frontend/tests/flujo-bonos.py
+      - name: Ejecutar las pruebas del backend
+        env:
+          BONUS_API_URL: http://api:8080
+        run: |
+          docker build --file backend/Dockerfile --target build --tag bonos-pruebas-api .
+          export ConnectionStrings__BonusTest="Server=db,1433;Database=BonusTest;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
+          docker run --rm --network bonos-verificacion_default --env ConnectionStrings__BonusTest --env BONUS_API_URL bonos-pruebas-api dotnet test --solution backend/BonusTest.slnx --configuration Release
+      - name: Ejecutar las pruebas del frontend
+        run: |
+          docker build --file frontend/Dockerfile --target build --tag bonos-pruebas-web .
+          docker run --rm bonos-pruebas-web npm test
+      - name: Comprobar que los datos iniciales se conservan
+        run: /tmp/navegador/bin/python frontend/tests/flujo-bonos.py --check
+      - name: Mostrar el estado si falla
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 80
+      - name: Retirar el entorno temporal
+        if: always()
+        run: docker compose down --volumes

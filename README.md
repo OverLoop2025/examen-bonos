@@ -1,43 +1,65 @@
 # Bonos de desempeño
 
-Permite buscar empleados activos, registrar bonos por monto fijo o porcentaje del sueldo, consultar sus importes y pagarlos, anularlos o eliminarlos. El cálculo y las validaciones se realizan en el servidor.
+Busca empleados activos, registra bonos, calcula sus importes y permite pagarlos, anularlos o eliminarlos. El pago reparte el bruto entre los proyectos del empleado.
 
-## Antes de empezar
+## Iniciar la aplicación
 
-- [Git](https://git-scm.com/downloads), [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) y [Node.js 24.15 o posterior de la rama 24](https://nodejs.org/en/download).
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto, con contenedores Linux y al menos 4 GB de memoria disponibles. La imagen de SQL Server requiere un equipo **x64**.
-- Un navegador actualizado. Se comprobó con Chromium 156, Firefox 157 y los motores WebKit 18.2 y 27.2.
+Necesitas **Git**, **Docker con Compose 2.20 o posterior**, un equipo **x64** y al menos **6 GB de memoria disponibles para Docker**. En Windows o Mac Intel, abre Docker Desktop con contenedores Linux. El navegador debe estar actualizado.
 
-Los comandos siguientes usan **Bash**, disponible en Linux y en WSL para Windows. Comprueba que `dotnet --version`, `node --version` y `docker compose version` funcionan en esa terminal.
+No necesitas instalar .NET, Node ni SQL Server en el equipo: Docker construye y ejecuta los tres servicios.
 
-## 1. Descargar y configurar
+1. Descarga el proyecto:
+
+   ```bash
+   git clone https://github.com/OverLoop2025/examen-bonos.git
+   cd examen-bonos
+   cp .env.example .env
+   ```
+
+2. Edita `.env` y escribe una contraseña en `SA_PASSWORD`, entre las comillas. Usa al menos 12 caracteres con mayúsculas, minúsculas, números y algún símbolo; evita comillas y `;`. Si algún puerto está ocupado, cambia `SQL_PORT`, `API_PORT` o `WEB_PORT`.
+
+3. Inicia todo desde la raíz:
+
+   ```bash
+   docker compose up --build -d --wait
+   ```
+
+   La primera vez necesita internet para descargar las imágenes y los paquetes. El comando termina cuando la web puede consultar la API y SQL Server. Los scripts `01_schema_seed.sql`, `02_bonus.sql` y `03_bonus_allocation.sql` se aplican en orden, únicamente si falta su tabla. No hay que ejecutarlos a mano.
+
+4. Abre [la aplicación](http://localhost:4200/bonuses). [Swagger](http://localhost:5106/swagger) permite revisar la API. Si cambiaste un puerto, úsalo en estos enlaces.
+
+Los comandos sirven en Bash y PowerShell. Los datos permanecen en un volumen; **no cambies su contraseña al reiniciar**. Para detener o volver a iniciar:
 
 ```bash
-git clone https://github.com/OverLoop2025/examen-bonos.git
-cd examen-bonos
-cp .env.example .env
-```
-
-Edita `.env` y escribe tu contraseña entre las comillas de `SA_PASSWORD`. Usa al menos 12 caracteres con mayúsculas, minúsculas, números y algún símbolo; evita comillas y `;`. Ese archivo es local y no se publica.
-
-Si el puerto 14333 está ocupado, cambia `SQL_PORT` por uno libre antes de continuar.
-
-## 2. Preparar la base de datos
-
-```bash
+docker compose stop
 docker compose up -d --wait
-docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/01_schema_seed.sql
-docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/02_bonus.sql
-docker compose exec -T db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -f 65001 -i /scripts/03_bonus_allocation.sql
 ```
 
-El primer comando espera a que SQL Server esté listo. Los scripts se ejecutan **una sola vez, en ese orden**, sobre una base nueva: `01` crea `BonusTest` y sus datos; `02` añade los bonos y `03` el detalle por proyecto. Si ya ejecutaste `01` y `02`, aplica únicamente `03`.
+Desde otro equipo de la misma red, usa `http://IP_DEL_SERVIDOR:4200/bonuses` y permite el puerto de la web en el firewall. Las consultas usan esa misma dirección; no dependen del `localhost` del visitante.
 
-Los datos se conservan al cerrar Docker. Para volver a abrir el proyecto, usa `docker compose up -d --wait` sin repetir los scripts ni cambiar la contraseña del volumen existente.
+Si algo no arranca, revisa `docker compose ps -a` y `docker compose logs --tail 80`. No borres el volumen para resolver un problema: contiene los registros.
 
-## 3. Iniciar la aplicación
+## Primera prueba
 
-Desde la raíz del proyecto, abre dos terminales.
+La tabla empieza vacía. Pulsa **Nuevo registro**, selecciona **Tecnología**, escribe solo **101** y busca al empleado. Debe aparecer Andrea Torres Vega, sueldo 5,000.00 y retención 8 %.
+
+Elige el mes actual o uno anterior, **Porcentaje del sueldo**, valor **10** y un motivo. La vista previa debe mostrar **500.00 de bruto, 40.00 de retención y 460.00 de neto**. Guarda y comprueba la fila.
+
+**Pagar**, previa confirmación, guarda **375.00 para Portal de clientes y 125.00 para App móvil** y pasa a Pagado. El detalle queda en `BonusAllocation`. Un Pagado ya no permite pagar, anular ni eliminar.
+
+Para probar **Anular** y **Eliminar**, registra bonos en otros meses: son alternativas desde Registrado. Los filtros son opcionales; **Buscar** los aplica y **Limpiar** los quita. Cada página contiene diez registros.
+
+## Comprobaciones
+
+El flujo **Comprobar aplicación**, en [GitHub Actions](https://github.com/OverLoop2025/examen-bonos/actions), construye un entorno nuevo, prueba la interfaz real, ejecuta las pruebas de backend y frontend y comprueba que las 28 filas iniciales no cambien. No usa archivos locales ni credenciales personales. Sus comandos están en [.github/workflows/comprobar.yml](.github/workflows/comprobar.yml).
+
+La interfaz se comprobó con Chromium 156, Firefox 157 y los motores WebKit 18.2 y 27.2, en escritorio y móvil.
+
+## Desarrollo local opcional
+
+Para trabajar sin contenedores de aplicación, instala [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) y [Node.js 24.15 o posterior de la rama 24](https://nodejs.org/en/download). Puedes mantener la base preparada por Docker. Estos comandos usan Bash.
+
+Detén antes `api` y `web` de Docker si usan los mismos puertos: `docker compose stop api web`.
 
 **Terminal 1: API**
 
@@ -51,20 +73,10 @@ dotnet run --project backend/src/BonusTest.Api --configuration Release --launch-
 
 ```bash
 npm --prefix frontend ci
-npm --prefix frontend start -- --host 127.0.0.1 --port 4200
+npm --prefix frontend start -- --host 0.0.0.0 --port 4200
 ```
 
-Abre [la pantalla de bonos](http://localhost:4200/bonuses). La API y su documentación están en [Swagger](http://localhost:5106/swagger). Mantén libres los puertos **4200 y 5106**; la pantalla ya apunta a esa API.
-
-Deja ambas terminales abiertas mientras uses la aplicación. Si cierras una, vuelve a ejecutar su comando.
-
-Para una primera prueba, busca **Tecnología / 101** y registra un bono del **10 %** para el mes actual. Debe mostrar **500.00 de bruto, 40.00 de retención y 460.00 de neto**. Puedes pagarlo, anularlo o eliminarlo desde la tabla, previa confirmación.
-
-Al pulsar **Pagar**, el bruto se reparte en **375.00 para Portal de clientes y 125.00 para App móvil**. El bono pasa a Pagado y sus tres acciones quedan deshabilitadas. El detalle se conserva en `BonusAllocation`.
-
-## Pruebas y compilación
-
-Con SQL Server y la API anteriores en ejecución, abre otra terminal en la raíz. Usa una base dedicada a pruebas, con la semilla original y sin bonos de uso personal.
+Deja ambas terminales abiertas. El proxy de desarrollo apunta a la API del puerto 5106. Para las pruebas, abre una tercera terminal y prepara la misma conexión:
 
 ```bash
 source .env
@@ -72,25 +84,18 @@ export ConnectionStrings__BonusTest="Server=127.0.0.1,$SQL_PORT;Database=BonusTe
 export BONUS_API_URL=http://localhost:5106
 dotnet test --solution backend/BonusTest.slnx --configuration Release
 npm --prefix frontend test
-```
-
-Las pruebas incluyen reglas, cálculos, esquema, persistencia y operaciones HTTP contra SQL Server. Revierten o limpian sus propios registros. Si falta la conexión o `BONUS_API_URL`, algunas pruebas se omiten: eso **no** equivale a verificar el módulo completo.
-
-Para compilar ambos proyectos:
-
-```bash
 dotnet build backend/BonusTest.slnx --configuration Release
 npm --prefix frontend run build
 ```
 
-Para detenerlos, pulsa `Ctrl+C` en las dos terminales y ejecuta `docker compose stop`.
+Sin conexión SQL o `BONUS_API_URL`, algunas pruebas backend se omiten; eso no equivale a verificar todo el módulo.
 
 ## Decisiones y alcance
 
-- SQL Server 2022, .NET 10 con Entity Framework Core y Angular 22 standalone. Se conservan las capas Domain, Application, Infrastructure y Api del proyecto base.
-- Índice único filtrado para impedir bonos vigentes duplicados, incluso simultáneos. `RowVersion` protege las modificaciones concurrentes. El borrado es lógico.
-- Sueldo, retención e importes quedan guardados con el bono. La aritmética es decimal, con redondeo a dos decimales y medio hacia arriba; la vista previa conserva esa precisión sin sustituir al servidor.
-- Periodos y auditoría usan la hora de **Lima**, independientemente del huso del equipo. La paginación y los filtros se ejecutan en SQL Server.
-- `POST /api/v1/Bonus/{bonusId}/pay` guarda detalle, estado Pagado y auditoría en una transacción. Agrupa las horas por nombre de proyecto y ordena por su primera fila; el último recibe el saldo exacto. Conserva nombre, horas e importe del momento del pago. Rechaza horas inválidas o un remanente negativo por redondeo, sin guardar cambios.
-- El operador llega en `UserCode`; la pantalla envía `candidato`, configurado en `frontend/src/environments/environment.ts`. Es una identificación de la prueba, no un inicio de sesión.
-- Se incluyen el módulo obligatorio y los dos extras del enunciado: pago con distribución y pruebas unitarias del cálculo.
+- SQL Server 2022, .NET 10 con Entity Framework Core y Angular 22 standalone. Se conservan Domain, Application, Infrastructure y Api.
+- Índice único filtrado contra bonos vigentes duplicados, incluso simultáneos. `RowVersion` protege cambios concurrentes; el borrado es lógico.
+- Sueldo, retención e importes se conservan con el bono. Cálculos decimales y redondeo a dos decimales con el medio hacia arriba; la vista previa no sustituye al servidor.
+- Periodos y auditoría usan Lima. Paginación y filtros se ejecutan en SQL Server.
+- El pago agrupa horas por nombre y ordena por su primera fila. El último proyecto recibe el saldo exacto; nombre, horas e importe quedan guardados junto con estado y auditoría en una transacción. Horas inválidas o un remanente negativo rechazan la operación sin guardar cambios.
+- `UserCode` identifica al operador; la pantalla envía `candidato`. No es un inicio de sesión.
+- Se incluyen los requisitos obligatorios y los dos extras. El servidor requiere x64: la imagen de SQL Server no admite ARM. El cliente solo necesita un navegador compatible. Docker usa Development para mostrar Swagger; `APP_ENVIRONMENT=Production` lo desactiva.

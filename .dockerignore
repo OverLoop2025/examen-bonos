@@ -1,0 +1,11 @@
+**
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+!global.json
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.angular/
