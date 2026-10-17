@@ -6,7 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "tsc src/app/features/bonuses/bonus-preview.ts --ignoreConfig --target ES2022 --module commonjs --rootDir src/app --outDir .angular/tests --skipLibCheck && node --test tests/*.test.cjs"
+    "test": "tsc src/app/features/bonuses/bonus-preview.ts src/app/core/services/bonus-json.ts --ignoreConfig --target ES2022 --module commonjs --rootDir src/app --outDir .angular/tests --skipLibCheck && node --test tests/*.test.cjs"
   },
   "private": true,
   "packageManager": "npm@11.12.1",

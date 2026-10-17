@@ -4,8 +4,7 @@ import { map } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Bonus, BonusFilter, Employee, RegisterBonusRequest } from '../models/bonus';
 import { PagedResponse } from '../models/paged-response';
-
-const decimalFields = new Set(['monthlySalary', 'taxRate', 'value', 'grossAmount', 'taxAmount', 'netAmount']);
+import { parseBonusJson, serializeBonus } from './bonus-json';
 
 @Injectable({ providedIn: 'root' })
 export class BonusApi {
@@ -21,18 +20,13 @@ export class BonusApi {
   }
 
   register(request: RegisterBonusRequest) {
-    // Mantiene el decimal escrito como número JSON, sin convertirlo a number.
-    const json = JSON as typeof JSON & { rawJSON(value: string): unknown };
-    const body = JSON.stringify({ ...request, value: json.rawJSON(request.value) });
-    return this.http.post(this.url, body, { headers: { 'Content-Type': 'application/json' } });
+    return this.http.post(this.url, serializeBonus(request), { headers: { 'Content-Type': 'application/json' } });
   }
 
   cancel(id: number) { return this.http.put<void>(`${this.url}/${id}/cancel`, null); }
   delete(id: number) { return this.http.delete<void>(`${this.url}/${id}`); }
 
   private read<T>(url: string, params: Record<string, string | number> = {}) {
-    return this.http.get(url, { params, responseType: 'text' }).pipe(map(text =>
-      JSON.parse(text, (key, value, context?: { source: string }) =>
-        decimalFields.has(key) && typeof value === 'number' ? context!.source : value) as T));
+    return this.http.get(url, { params, responseType: 'text' }).pipe(map(text => parseBonusJson<T>(text)));
   }
 }
