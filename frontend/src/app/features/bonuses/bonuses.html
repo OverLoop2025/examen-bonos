@@ -1,33 +1,70 @@
 <section class="card">
   <header class="card-header">
     <h2>Bonos de desempeño</h2>
-    <button type="button" class="btn btn-primary" disabled>Nuevo registro</button>
+    <button type="button" class="btn btn-primary" [disabled]="busy() || !departments().length" (click)="registering.set(true)">Nuevo registro</button>
   </header>
-
-  <div class="filters">
-    <label>
-      Área
-      <select>
+  <form class="filters" [formGroup]="form" (ngSubmit)="search()">
+    <label>Área
+      <select formControlName="departmentCode">
         <option value="">Todas</option>
         @for (department of departments(); track department.departmentCode) {
           <option [value]="department.departmentCode">{{ department.departmentName }}</option>
         }
       </select>
     </label>
-
-    <label>
-      Estado
-      <select>
+    <label>Número de empleado <input formControlName="employeeNumber" inputmode="numeric" /></label>
+    <label>Periodo <input type="month" formControlName="period" /></label>
+    <label>Estado
+      <select formControlName="stateCode">
         <option value="">Todos</option>
         @for (state of bonusStates(); track state.stateCode) {
           <option [value]="state.stateCode">{{ state.stateDescription }}</option>
         }
       </select>
     </label>
-  </div>
-
-  <p class="placeholder">
-    Los combos ya consumen <code>GET /api/v1/Catalog</code>. Implementa aquí el listado paginado,
-    las acciones por fila y el modal de registro descritos en el enunciado.
-  </p>
+    <div class="form-actions">
+      <button class="btn btn-primary" [disabled]="busy()">Buscar</button>
+      <button type="button" class="btn" (click)="clear()" [disabled]="busy()">Limpiar</button>
+    </div>
+  </form>
+  @if (form.invalid && form.touched) { <p class="error">El número de empleado debe ser un entero positivo válido.</p> }
+  @if (loading()) { <p role="status">Cargando bonos…</p> }
+  @if (failed()) { <p role="status">No se pudo cargar el listado. <button class="btn" (click)="search()">Reintentar</button></p> }
+  @if (page(); as result) {
+    <p role="status">{{ result.totalRecords }} registros · Página {{ result.pageNumber }} de {{ result.totalPages || 1 }}</p>
+    @if (result.data.length) {
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Listado de bonos">
+        <table>
+          <thead><tr>
+            <th>Acciones</th><th>Estado</th><th>Periodo</th><th>Área</th><th>Empleado</th><th>Nombre</th>
+            <th>Tipo</th><th>Valor</th><th>Motivo</th><th>Bruto</th><th>Retención</th><th>Neto</th>
+          </tr></thead>
+          <tbody>
+            @for (bonus of result.data; track bonus.bonusId) {
+              <tr>
+                <td class="actions">
+                  <button class="btn" (click)="change(bonus, true)" [disabled]="busy() || bonus.stateCode !== states.Registered">Anular</button>
+                  <button class="btn" (click)="change(bonus, false)" [disabled]="busy() || bonus.stateCode !== states.Registered">Eliminar</button>
+                </td>
+                <td>{{ bonus.stateDescription }}</td><td>{{ bonus.period }}</td><td>{{ bonus.departmentName }}</td>
+                <td>{{ bonus.departmentCode }}-{{ bonus.employeeNumber }}</td><td>{{ bonus.fullName }}</td>
+                <td>{{ bonus.bonusTypeDescription }}</td>
+                <td class="amount">{{ bonus.bonusTypeId === types.SalaryPercentage ? percent(bonus.value) + ' %' : money(bonus.value) }}</td>
+                <td>{{ bonus.reasonDescription }}</td><td class="amount">{{ money(bonus.grossAmount) }}</td>
+                <td class="amount">{{ money(bonus.taxAmount) }}</td><td class="amount">{{ money(bonus.netAmount) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else { <p>No hay bonos para los filtros seleccionados.</p> }
+    <nav class="pagination" aria-label="Paginación de bonos">
+      <button class="btn" [disabled]="busy() || result.pageNumber <= 1" (click)="load(result.pageNumber - 1)">Anterior</button>
+      <span>{{ result.pageNumber }} / {{ result.totalPages || 1 }}</span>
+      <button class="btn" [disabled]="busy() || result.pageNumber >= result.totalPages" (click)="load(result.pageNumber + 1)">Siguiente</button>
+    </nav>
+  }
 </section>
+@if (registering()) {
+  <app-register-bonus [departments]="departments()" (closed)="closeRegistration($event)" />
+}

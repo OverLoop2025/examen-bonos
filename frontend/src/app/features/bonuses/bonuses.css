@@ -1,29 +1,13 @@
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.card-header h2 {
-  margin: 0;
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.filters label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.placeholder {
-  color: var(--text-muted);
-}
+.card-header, .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.card-header { flex-wrap: wrap; margin-bottom: 20px; }
+.card-header h2 { margin: 0; }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.filters label { flex: 1 1 150px; }
+.table-wrap { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+th, td { border-bottom: 1px solid var(--border); padding: 10px 8px; text-align: left; }
+th { background: var(--background); white-space: nowrap; }
+.actions { white-space: nowrap; }
+.actions .btn { padding: 6px 8px; margin-right: 4px; }
+.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pagination { justify-content: center; margin-top: 16px; }

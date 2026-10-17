@@ -1,0 +1,79 @@
+<dialog #dialog aria-labelledby="register-title" (cancel)="escape($event)">
+  <header class="modal-header">
+    <h2 id="register-title">Registrar bono</h2>
+    <button type="button" class="btn" aria-label="Cerrar registro" (click)="close()" [disabled]="saving()">×</button>
+  </header>
+  <form [formGroup]="lookup" (ngSubmit)="search()">
+    <fieldset [disabled]="saving()">
+      <legend>Buscar empleado</legend>
+      <div class="grid">
+        <label>Área del empleado
+          <select formControlName="departmentCode">
+            <option value="">Seleccionar</option>
+            @for (department of departments(); track department.departmentCode) {
+              <option [value]="department.departmentCode">{{ department.departmentName }}</option>
+            }
+          </select>
+        </label>
+        <label>Número del empleado <input formControlName="employeeNumber" inputmode="numeric" /></label>
+        <button class="btn btn-primary" [disabled]="searching()">{{ searching() ? 'Buscando…' : 'Buscar empleado' }}</button>
+      </div>
+      @if (lookup.touched && lookup.invalid) { <p class="error">Selecciona un área e ingresa un número de empleado entero positivo válido.</p> }
+    </fieldset>
+  </form>
+  @if (notification.message(); as message) { <p class="error" role="alert">{{ message.text }}</p> }
+  @if (employee(); as worker) {
+    <dl class="details">
+      <div><dt>Empleado</dt><dd>{{ worker.fullName }}</dd></div>
+      <div><dt>Fecha de ingreso</dt><dd>{{ worker.hireDate.slice(0, 10) }}</dd></div>
+      <div><dt>Sueldo mensual</dt><dd>{{ money(worker.monthlySalary) }}</dd></div>
+      <div><dt>Retención</dt><dd>{{ worker.taxRate }} %</dd></div>
+    </dl>
+  } @else { <p role="status">Busca un empleado activo para continuar.</p> }
+  <form [formGroup]="form" (ngSubmit)="save()">
+    <fieldset [disabled]="saving() || !employee() || !catalogs()">
+      <legend>Datos del bono</legend>
+      <div class="grid">
+        <label>Periodo del bono <input type="month" formControlName="period" min="0001-01" [max]="currentPeriod()" /></label>
+        <label>Tipo de bono
+          <select formControlName="bonusTypeId">
+            @for (type of catalogs()?.types; track type.bonusTypeId) {
+              <option [ngValue]="type.bonusTypeId">{{ type.bonusTypeDescription }}</option>
+            }
+          </select>
+        </label>
+        <label>{{ form.controls.bonusTypeId.value === types.SalaryPercentage ? 'Porcentaje (%)' : 'Monto fijo' }}
+          <input formControlName="value" inputmode="decimal" autocomplete="off" />
+        </label>
+        <label>Motivo
+          <select formControlName="reasonCode">
+            <option value="">Seleccionar</option>
+            @for (reason of catalogs()?.reasons; track reason.reasonCode) {
+              <option [value]="reason.reasonCode">{{ reason.reasonDescription }}</option>
+            }
+          </select>
+        </label>
+      </div>
+      @if (form.controls.period.touched && invalidPeriod) { <p class="error">El periodo es obligatorio y no puede superar el mes actual en Lima.</p> }
+      @if (form.controls.value.touched && !preview()) { <p class="error">Ingresa un valor mayor que cero, hasta el sueldo mensual o 100 %, con hasta 14 decimales.</p> }
+      @if (submitted() && form.controls.reasonCode.invalid) { <p class="error">Selecciona un motivo activo.</p> }
+    </fieldset>
+    @if (preview(); as amounts) {
+      <dl class="preview" aria-label="Vista previa" aria-live="polite">
+        <div><dt>Bruto</dt><dd>{{ money(amounts[0]) }}</dd></div>
+        <div><dt>Retención</dt><dd>{{ money(amounts[1]) }}</dd></div>
+        <div><dt>Neto</dt><dd>{{ money(amounts[2]) }}</dd></div>
+      </dl>
+    }
+    @if (!catalogs()) { <p role="status">Cargando tipos y motivos…</p> }
+    @if (catalogs(); as data) {
+      @if (!data.types.length || !data.reasons.length) { <p class="error">No se pudieron cargar los tipos o motivos. Cierra y vuelve a intentarlo.</p> }
+    }
+    <footer class="form-actions">
+      <button type="button" class="btn" (click)="close()" [disabled]="saving()">Cancelar</button>
+      <button class="btn btn-primary" [disabled]="saving() || searching() || !employee() || !preview() || form.invalid || invalidPeriod">
+        {{ saving() ? 'Guardando…' : 'Guardar bono' }}
+      </button>
+    </footer>
+  </form>
+</dialog>

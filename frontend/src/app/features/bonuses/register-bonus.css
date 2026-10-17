@@ -1,0 +1,12 @@
+dialog { width: min(720px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 20px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+dialog::backdrop { background: #0007; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+h2 { margin: 0 0 12px; }
+fieldset { border: 0; padding: 12px 0; margin: 0; min-width: 0; }
+legend { font-weight: 600; }
+.grid, .details, .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
+.grid { align-items: end; }
+.details, .preview { padding: 12px; background: var(--background); border-radius: 6px; }
+dt { font-size: .85rem; color: var(--text-muted); }
+dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+footer { justify-content: end; margin-top: 16px; }

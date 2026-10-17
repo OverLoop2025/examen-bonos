@@ -46,9 +46,14 @@ body {
 
 select,
 input {
-  min-width: 180px;
+  min-width: 0;
+  width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font: inherit;
 }
+
+label { display: flex; flex-direction: column; gap: 5px; font-size: .9rem; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.error { color: #a21d17; font-size: .9rem; }
