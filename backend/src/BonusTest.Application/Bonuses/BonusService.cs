@@ -39,6 +39,9 @@ public class BonusService(IBonusRepository repository, TimeProvider clock)
         await repository.SaveAsync(cancellationToken);
     }
 
+    public Task PayAsync(int bonusId, string userCode, CancellationToken cancellationToken) =>
+        repository.PayAsync(bonusId, userCode, Now(), cancellationToken);
+
     private async Task<Bonus> FindAsync(int bonusId, CancellationToken cancellationToken) =>
         await repository.FindAsync(bonusId, cancellationToken) ??
         throw new BusinessException("BONUS_NOT_FOUND", "El bono no existe o fue eliminado.");

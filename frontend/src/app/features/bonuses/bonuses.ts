@@ -69,14 +69,15 @@ export class Bonuses {
   protected load(page: number) { this.requests.next(page); }
   protected closeRegistration(saved: boolean) { this.registering.set(false); if (saved) this.load(1); }
 
-  protected change(bonus: Bonus, cancel: boolean) {
+  protected change(bonus: Bonus, action: 'pay' | 'cancel' | 'delete') {
     if (this.busy() || this.loading() || bonus.stateCode !== BonusStates.Registered) return;
-    if (!window.confirm(`¿${cancel ? 'Anular' : 'Eliminar'} el bono de ${bonus.fullName} del periodo ${bonus.period}?`)) return;
+    const label = { pay: 'Pagar', cancel: 'Anular', delete: 'Eliminar' }[action];
+    if (!window.confirm(`¿${label} el bono de ${bonus.fullName} del periodo ${bonus.period}?`)) return;
     this.busy.set(true);
-    (cancel ? this.api.cancel(bonus.bonusId) : this.api.delete(bonus.bonusId)).pipe(
+    this.api[action](bonus.bonusId).pipe(
       finalize(() => this.busy.set(false)),
     ).subscribe({
-      next: () => { this.notification.show('success', cancel ? 'Bono anulado.' : 'Bono eliminado.'); this.load(this.page()?.pageNumber ?? 1); },
+      next: () => { this.notification.show('success', { pay: 'Bono pagado.', cancel: 'Bono anulado.', delete: 'Bono eliminado.' }[action]); this.load(this.page()?.pageNumber ?? 1); },
       error: () => this.load(this.page()?.pageNumber ?? 1),
     });
   }

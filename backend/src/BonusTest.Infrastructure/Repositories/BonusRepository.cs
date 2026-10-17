@@ -67,6 +67,19 @@ public class BonusRepository(AppDbContext context) : IBonusRepository
     public Task<Bonus?> FindAsync(int bonusId, CancellationToken cancellationToken) =>
         context.Bonuses.SingleOrDefaultAsync(x => x.BonusId == bonusId, cancellationToken);
 
+    public async Task PayAsync(int bonusId, string userCode, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var bonus = await FindAsync(bonusId, cancellationToken) ??
+            throw new BusinessException("BONUS_NOT_FOUND", "El bono no existe o fue eliminado.");
+        var hours = await context.EmployeeProjectHours.AsNoTracking().Where(x =>
+            x.DepartmentCode == bonus.DepartmentCode && x.EmployeeNumber == bonus.EmployeeNumber)
+            .ToListAsync(cancellationToken);
+        bonus.Pay(hours, userCode, now);
+        await SaveAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task SaveAsync(CancellationToken cancellationToken)
     {
         try

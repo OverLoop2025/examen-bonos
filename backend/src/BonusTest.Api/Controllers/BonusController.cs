@@ -39,4 +39,12 @@ public class BonusController(BonusService service) : ControllerBase
         await service.DeleteAsync(bonusId, userCode ?? "", cancellationToken);
         return NoContent();
     }
+
+    [HttpPost("{bonusId:int}/pay")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Pay(int bonusId, [FromHeader] string? userCode, CancellationToken cancellationToken)
+    {
+        await service.PayAsync(bonusId, userCode ?? "", cancellationToken);
+        return NoContent();
+    }
 }

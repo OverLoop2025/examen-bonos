@@ -25,6 +25,7 @@ export class BonusApi {
 
   cancel(id: number) { return this.http.put<void>(`${this.url}/${id}/cancel`, null); }
   delete(id: number) { return this.http.delete<void>(`${this.url}/${id}`); }
+  pay(id: number) { return this.http.post<void>(`${this.url}/${id}/pay`, null); }
 
   private read<T>(url: string, params: Record<string, string | number> = {}) {
     return this.http.get(url, { params, responseType: 'text' }).pipe(map(text => parseBonusJson<T>(text)));

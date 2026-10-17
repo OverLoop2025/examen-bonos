@@ -156,9 +156,65 @@ public class BonusRepositoryTests
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Error_despues_de_guardar_revierte_pago_detalle_y_auditoria()
+    {
+        var user = "rollback-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            int id;
+            await using (var setup = Context())
+                id = (await new BonusRepository(setup).RegisterAsync(new RegisterBonusRequest("TECH1", 101, "1961-01", 2, 10m, "000001"), user, DateTimeOffset.Now, Token)).BonusId;
+            await using (var failing = Context(new FailAfterSave()))
+                await Assert.ThrowsAsync<InvalidOperationException>(() => new BonusRepository(failing).PayAsync(id, user, DateTimeOffset.Now, Token));
+            await using var verify = Context();
+            var saved = await verify.Bonuses.AsNoTracking().SingleAsync(x => x.BonusId == id, Token);
+            Assert.Equal("0201", saved.StateCode);
+            Assert.Null(saved.ModifiedBy);
+            Assert.Null(saved.ModifiedAt);
+            Assert.False(await verify.BonusAllocations.AnyAsync(x => x.BonusId == id, Token));
+        }
+        finally { await Cleanup(user); }
+    }
+
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Pago_con_version_antigua_no_deja_detalle_ni_sobrescribe_anulacion()
+    {
+        var user = "pago-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await using var db = Context();
+            var repo = new BonusRepository(db);
+            var bonus = await repo.RegisterAsync(new RegisterBonusRequest("TECH1", 101, "1961-02", 2, 10m, "000001"), user, DateTimeOffset.Now, Token);
+            await using var stale = Context();
+            await new BonusRepository(stale).FindAsync(bonus.BonusId, Token);
+            bonus.Cancel(user, DateTimeOffset.Now);
+            await repo.SaveAsync(Token);
+            var error = await Assert.ThrowsAsync<BusinessException>(() => new BonusRepository(stale).PayAsync(bonus.BonusId, user, DateTimeOffset.Now, Token));
+            Assert.Equal("BONUS_CONFLICT", error.Code);
+            await using var verify = Context();
+            Assert.Equal("0203", (await verify.Bonuses.SingleAsync(x => x.BonusId == bonus.BonusId, Token)).StateCode);
+            Assert.False(await verify.BonusAllocations.AnyAsync(x => x.BonusId == bonus.BonusId, Token));
+        }
+        finally { await Cleanup(user); }
+    }
+
+    private sealed class FailAfterSave : SaveChangesInterceptor
+    {
+        public override async ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            var db = (AppDbContext)eventData.Context!;
+            var id = db.ChangeTracker.Entries<Bonus>().Single().Entity.BonusId;
+            Assert.Equal("0202", await db.Bonuses.AsNoTracking().Where(x => x.BonusId == id).Select(x => x.StateCode).SingleAsync(cancellationToken));
+            Assert.Equal(2, await db.BonusAllocations.CountAsync(x => x.BonusId == id, cancellationToken));
+            throw new InvalidOperationException("Fallo provocado antes de confirmar la transacción.");
+        }
+    }
+
     private static async Task Cleanup(string user)
     {
         await using var db = Context();
+        await db.BonusAllocations.Where(x => db.Bonuses.IgnoreQueryFilters().Any(b => b.BonusId == x.BonusId && b.CreatedBy == user)).ExecuteDeleteAsync(CancellationToken.None);
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.Bonus WHERE CreatedBy = {user}", CancellationToken.None);
     }
 

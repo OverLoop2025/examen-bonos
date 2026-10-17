@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BonusTest.Infrastructure.Persistence;
+using BonusTest.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BonusTest.Tests;
@@ -337,6 +338,125 @@ public class BonusApiTests : IAsyncLifetime
     private static async Task<JsonElement> Json(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>(Token);
 
+    [Fact(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
+    public async Task Paga_y_guarda_el_reparto_y_la_auditoria_sin_alterar_los_importes()
+    {
+        using var created = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-01"));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = (await Json(created)).GetProperty("bonusId").GetInt32();
+        using var paid = await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay", operatorCode: user + "-p");
+        Assert.Equal(HttpStatusCode.NoContent, paid.StatusCode);
+        await using var db = Context();
+        var bonus = await db.Bonuses.AsNoTracking().SingleAsync(x => x.BonusId == id, Token);
+        Assert.Equal("0202", bonus.StateCode);
+        Assert.Equal(user + "-p", bonus.ModifiedBy);
+        Assert.Equal(user, bonus.CreatedBy);
+        Assert.True(bonus.ModifiedAt >= bonus.CreatedAt);
+        Assert.Equal(500m, bonus.GrossAmount);
+        Assert.Equal(460m, bonus.NetAmount);
+        var detail = await db.BonusAllocations.Where(x => x.BonusId == id).OrderBy(x => x.LineNumber).ToListAsync(Token);
+        Assert.Equal(new[] { "Portal de clientes", "App móvil" }, detail.Select(x => x.ProjectName));
+        Assert.Equal(new[] { 120m, 40m }, detail.Select(x => x.Hours));
+        Assert.Equal(new[] { 375m, 125m }, detail.Select(x => x.Amount));
+        using var repeated = await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay");
+        await Conflict(repeated, "BONUS_NOT_REGISTERED");
+        using var cancel = await Send(HttpMethod.Put, $"api/v1/Bonus/{id}/cancel");
+        await Conflict(cancel, "BONUS_NOT_REGISTERED");
+        using var delete = await Send(HttpMethod.Delete, $"api/v1/Bonus/{id}");
+        await Conflict(delete, "BONUS_NOT_REGISTERED");
+        Assert.Equal(2, await db.BonusAllocations.CountAsync(x => x.BonusId == id, Token));
+    }
+
+    [Fact(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
+    public async Task Pagos_simultaneos_guardan_un_solo_reparto()
+    {
+        using var created = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-02"));
+        var id = (await Json(created)).GetProperty("bonusId").GetInt32();
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<HttpResponseMessage> Pay() { await start.Task; return await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay"); }
+        var pending = Enumerable.Range(0, 6).Select(_ => Pay()).ToArray();
+        start.SetResult();
+        var responses = await Task.WhenAll(pending);
+        try
+        {
+            Assert.Single(responses, x => x.StatusCode == HttpStatusCode.NoContent);
+            foreach (var failed in responses.Where(x => x.StatusCode != HttpStatusCode.NoContent))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, failed.StatusCode);
+                Assert.Contains((await Json(failed)).GetProperty("code").GetString(), new[] { "BONUS_NOT_REGISTERED", "BONUS_CONFLICT" });
+            }
+            await using var db = Context();
+            Assert.Equal(2, await db.BonusAllocations.CountAsync(x => x.BonusId == id, Token));
+            Assert.Equal(500m, await db.BonusAllocations.Where(x => x.BonusId == id).SumAsync(x => x.Amount, Token));
+        }
+        finally { foreach (var response in responses) response.Dispose(); }
+    }
+
+    [Theory(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Pago_simultaneo_con_anulacion_o_borrado_conserva_solo_el_resultado_ganador(bool cancel)
+    {
+        using var created = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-06"));
+        var id = (await Json(created)).GetProperty("bonusId").GetInt32();
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<HttpResponseMessage> Change(HttpMethod method, string suffix)
+        {
+            await start.Task;
+            return await Send(method, $"api/v1/Bonus/{id}{suffix}");
+        }
+        var pending = new[] { Change(HttpMethod.Post, "/pay"), Change(cancel ? HttpMethod.Put : HttpMethod.Delete, cancel ? "/cancel" : "") };
+        start.SetResult();
+        var responses = await Task.WhenAll(pending);
+        try
+        {
+            Assert.Single(responses, x => x.StatusCode == HttpStatusCode.NoContent);
+            Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Conflict);
+            await using var db = Context();
+            var saved = await db.Bonuses.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.BonusId == id, Token);
+            var detail = await db.BonusAllocations.Where(x => x.BonusId == id).ToListAsync(Token);
+            if (saved.StateCode == "0202")
+            {
+                Assert.False(saved.IsDeleted);
+                Assert.Equal(2, detail.Count);
+                Assert.Equal(500m, detail.Sum(x => x.Amount));
+            }
+            else
+            {
+                Assert.True(cancel ? saved.StateCode == "0203" : saved.IsDeleted);
+                Assert.Empty(detail);
+            }
+        }
+        finally { foreach (var response in responses) response.Dispose(); }
+    }
+
+    [Fact(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
+    public async Task Pago_de_un_proyecto_y_validaciones_de_estado_y_usuario()
+    {
+        using var missing = await Send(HttpMethod.Post, "api/v1/Bonus/2147483647/pay");
+        await Conflict(missing, "BONUS_NOT_FOUND");
+        using var created = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-03", type: 1, value: 0.125m, department: "VENTA", number: 201));
+        var id = (await Json(created)).GetProperty("bonusId").GetInt32();
+        using var noUser = await client.PostAsync($"api/v1/Bonus/{id}/pay", null, Token);
+        await Conflict(noUser, "INVALID_USER");
+        using var longUser = await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay", operatorCode: new string('x', 51));
+        await Conflict(longUser, "INVALID_USER");
+        using var paid = await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay");
+        Assert.Equal(HttpStatusCode.NoContent, paid.StatusCode);
+        await using var db = Context();
+        Assert.Equal(0.13m, (await db.BonusAllocations.SingleAsync(x => x.BonusId == id, Token)).Amount);
+        using var cancelled = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-04"));
+        var cancelledId = (await Json(cancelled)).GetProperty("bonusId").GetInt32();
+        using var cancel = await Send(HttpMethod.Put, $"api/v1/Bonus/{cancelledId}/cancel");
+        using var badState = await Send(HttpMethod.Post, $"api/v1/Bonus/{cancelledId}/pay");
+        await Conflict(badState, "BONUS_NOT_REGISTERED");
+        using var deleted = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1960-05"));
+        var deletedId = (await Json(deleted)).GetProperty("bonusId").GetInt32();
+        using var delete = await Send(HttpMethod.Delete, $"api/v1/Bonus/{deletedId}");
+        using var hidden = await Send(HttpMethod.Post, $"api/v1/Bonus/{deletedId}/pay");
+        await Conflict(hidden, "BONUS_NOT_FOUND");
+    }
+
     private static async Task Conflict(HttpResponseMessage response, string code)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -346,11 +466,46 @@ public class BonusApiTests : IAsyncLifetime
         Assert.Equal(2, data.EnumerateObject().Count());
     }
 
+    [Theory(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task Horas_ausentes_o_invalidas_no_guardan_pago_ni_detalle(int? hours)
+    {
+        const int number = 2147400020;
+        await using var db = Context();
+        db.Employees.Add(new Employee { DepartmentCode = "TECH1", EmployeeNumber = number, FullName = user,
+            HireDate = new DateTime(2020, 1, 1), MonthlySalary = 5000m, TaxRate = 8m, EmployeeStateCode = "0101" });
+        await db.SaveChangesAsync(Token);
+        try
+        {
+            if (hours.HasValue)
+            {
+                db.EmployeeProjectHours.Add(new EmployeeProjectHours { DepartmentCode = "TECH1", EmployeeNumber = number, ProjectName = "Proyecto de prueba", Hours = hours.Value });
+                await db.SaveChangesAsync(Token);
+            }
+            using var created = await Send(HttpMethod.Post, "api/v1/Bonus", Request("1962-01", number: number));
+            var id = (await Json(created)).GetProperty("bonusId").GetInt32();
+            using var response = await Send(HttpMethod.Post, $"api/v1/Bonus/{id}/pay");
+            await Conflict(response, "INVALID_PROJECT_HOURS");
+            var saved = await db.Bonuses.AsNoTracking().SingleAsync(x => x.BonusId == id, Token);
+            Assert.Equal("0201", saved.StateCode);
+            Assert.Null(saved.ModifiedAt);
+            Assert.False(await db.BonusAllocations.AnyAsync(x => x.BonusId == id, Token));
+        }
+        finally
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.Bonus WHERE CreatedBy = {user}", CancellationToken.None);
+            await db.Database.ExecuteSqlInterpolatedAsync($"DELETE h FROM dbo.EmployeeProjectHours h JOIN dbo.Employee e ON e.DepartmentCode=h.DepartmentCode AND e.EmployeeNumber=h.EmployeeNumber WHERE e.DepartmentCode='TECH1' AND e.EmployeeNumber={number} AND e.FullName={user}", CancellationToken.None);
+            await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.Employee WHERE DepartmentCode='TECH1' AND EmployeeNumber={number} AND FullName={user}", CancellationToken.None);
+        }
+    }
+
     private static AppDbContext Context() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseSqlServer(Environment.GetEnvironmentVariable("ConnectionStrings__BonusTest")).Options);
 
     [Fact(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
-    public async Task Swagger_describe_las_cinco_operaciones_y_sus_respuestas()
+    public async Task Swagger_describe_las_operaciones_y_sus_respuestas()
     {
         using var response = await client.GetAsync("swagger/v1/swagger.json", Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -361,10 +516,10 @@ public class BonusApiTests : IAsyncLifetime
             ("/api/v1/Bonus", "get", "200"),
             ("/api/v1/Bonus/employee/{departmentCode}/{employeeNumber}", "get", "200"),
             ("/api/v1/Bonus/{bonusId}/cancel", "put", "204"),
-            ("/api/v1/Bonus/{bonusId}", "delete", "204")
+            ("/api/v1/Bonus/{bonusId}", "delete", "204"),
+            ("/api/v1/Bonus/{bonusId}/pay", "post", "204")
         })
             Assert.True(paths.GetProperty(path).GetProperty(method).GetProperty("responses").TryGetProperty(code, out _));
-        Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.EndsWith("/pay", StringComparison.Ordinal));
         var list = paths.GetProperty("/api/v1/Bonus").GetProperty("get").GetProperty("responses").GetProperty("200");
         Assert.True(list.GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
     }
@@ -374,6 +529,7 @@ public class BonusApiTests : IAsyncLifetime
         client.Dispose();
         if (!ApiConfigured) return;
         await using var db = Context();
+        await db.BonusAllocations.Where(x => db.Bonuses.IgnoreQueryFilters().Any(b => b.BonusId == x.BonusId && b.CreatedBy == user)).ExecuteDeleteAsync(CancellationToken.None);
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.Bonus WHERE CreatedBy = {user}", CancellationToken.None);
     }
 }

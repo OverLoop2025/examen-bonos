@@ -10,4 +10,5 @@ public interface IBonusRepository
     Task<Bonus> RegisterAsync(RegisterBonusRequest request, string userCode, DateTimeOffset now, CancellationToken cancellationToken);
     Task<Bonus?> FindAsync(int bonusId, CancellationToken cancellationToken);
     Task SaveAsync(CancellationToken cancellationToken);
+    Task PayAsync(int bonusId, string userCode, DateTimeOffset now, CancellationToken cancellationToken);
 }

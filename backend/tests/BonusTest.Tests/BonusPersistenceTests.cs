@@ -272,6 +272,29 @@ public class BonusPersistenceTests
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Detalle_tiene_clave_relacion_y_restricciones_reales_en_sql()
+    {
+        await using var db = Context();
+        Assert.Equal(4, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.BonusAllocation') AND is_disabled=0 AND is_not_trusted=0").SingleAsync(Token));
+        Assert.Equal(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.BonusAllocation') AND referenced_object_id=OBJECT_ID('dbo.Bonus') AND delete_referential_action=0 AND is_disabled=0 AND is_not_trusted=0").SingleAsync(Token));
+        Assert.Equal(2, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM sys.columns WHERE object_id=OBJECT_ID('dbo.BonusAllocation') AND ((name='Hours' AND precision=18 AND scale=2) OR (name='Amount' AND precision=16 AND scale=2)) AND is_nullable=0").SingleAsync(Token));
+        await using var transaction = await db.Database.BeginTransactionAsync(Token);
+        var bonus = await Register(db, "esquema");
+        db.Bonuses.Add(bonus);
+        await db.SaveChangesAsync(Token);
+        foreach (var (line, project, hours, amount) in new[] { (0, "A", 1m, 1m), (1, " ", 1m, 1m), (1, "A", 0m, 1m), (1, "A", 1m, -1m) })
+        {
+            var error = await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync($"INSERT dbo.BonusAllocation(BonusId,LineNumber,ProjectName,Hours,Amount) VALUES({bonus.BonusId},{line},{project},{hours},{amount})", Token));
+            Assert.Equal(547, error.Number);
+        }
+        var missing = await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlRawAsync("INSERT dbo.BonusAllocation(BonusId,LineNumber,ProjectName,Hours,Amount) VALUES(2147483647,1,'A',1,1)", Token));
+        Assert.Equal(547, missing.Number);
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT dbo.BonusAllocation(BonusId,LineNumber,ProjectName,Hours,Amount) VALUES({bonus.BonusId},1,'A',1,500)", Token);
+        var duplicate = await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync($"INSERT dbo.BonusAllocation(BonusId,LineNumber,ProjectName,Hours,Amount) VALUES({bonus.BonusId},1,'B',1,500)", Token));
+        Assert.Equal(2627, duplicate.Number);
+    }
+
     private static AppDbContext Context() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseSqlServer(Environment.GetEnvironmentVariable("ConnectionStrings__BonusTest")).Options);
 
