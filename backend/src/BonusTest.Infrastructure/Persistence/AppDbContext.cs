@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BonusReason> BonusReasons => Set<BonusReason>();
 
     public DbSet<Bonus> Bonuses => Set<Bonus>();
+    public DbSet<BonusAllocation> BonusAllocations => Set<BonusAllocation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

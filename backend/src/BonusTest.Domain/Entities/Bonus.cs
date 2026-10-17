@@ -8,6 +8,8 @@ namespace BonusTest.Domain.Entities;
 public class Bonus
 {
     private Bonus() { }
+    private readonly List<BonusAllocation> allocations = [];
+    public IReadOnlyCollection<BonusAllocation> Allocations => allocations;
 
     public int BonusId { get; private set; }
     public string DepartmentCode { get; private set; } = null!;
@@ -75,10 +77,24 @@ public class Bonus
         IsDeleted = true;
     }
 
-    private void RecordModification(string userCode, DateTimeOffset now)
+    public void Pay(IEnumerable<EmployeeProjectHours> hours, string userCode, DateTimeOffset now)
+    {
+        EnsureRegistered();
+        var detail = BonusDistributor.Distribute(GrossAmount, hours);
+        RecordModification(userCode, now);
+        allocations.AddRange(detail);
+        StateCode = BonusStates.Paid;
+    }
+
+    private void EnsureRegistered()
     {
         if (StateCode != BonusStates.Registered || IsDeleted)
-            throw new BusinessException("BONUS_NOT_REGISTERED", "Solo se puede anular o eliminar un bono registrado.");
+            throw new BusinessException("BONUS_NOT_REGISTERED", "Solo se puede modificar un bono registrado.");
+    }
+
+    private void RecordModification(string userCode, DateTimeOffset now)
+    {
+        EnsureRegistered();
         var user = ValidateUser(userCode);
         if (now < (ModifiedAt ?? CreatedAt))
             throw new BusinessException("INVALID_MODIFICATION_DATE", "La modificación no puede ser anterior al registro.");
