@@ -1,5 +1,6 @@
 **/bin/
 **/obj/
+**/.angular/
 .env
 .env.*
 !.env.example
