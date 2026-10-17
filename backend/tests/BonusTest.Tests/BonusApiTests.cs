@@ -325,7 +325,7 @@ public class BonusApiTests : IAsyncLifetime
     [Fact(Skip = SkipApi, SkipUnless = nameof(ApiConfigured))]
     public async Task Periodo_actual_se_acepta_y_mes_siguiente_se_rechaza_con_el_reloj_del_servidor()
     {
-        var now = DateTimeOffset.Now;
+        var now = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("America/Lima"));
         var current = now.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
         var future = now.AddMonths(1).ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
         using var accepted = await Send(HttpMethod.Post, "api/v1/Bonus", Request(current, number: 102));

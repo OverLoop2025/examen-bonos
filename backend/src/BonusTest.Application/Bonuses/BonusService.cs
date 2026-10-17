@@ -21,25 +21,28 @@ public class BonusService(IBonusRepository repository, TimeProvider clock)
 
     public async Task<BonusCreatedDto> RegisterAsync(RegisterBonusRequest request, string userCode, CancellationToken cancellationToken)
     {
-        var bonus = await repository.RegisterAsync(request, userCode, clock.GetLocalNow(), cancellationToken);
+        var bonus = await repository.RegisterAsync(request, userCode, Now(), cancellationToken);
         return new BonusCreatedDto(bonus.BonusId, bonus.StateCode, bonus.GrossAmount, bonus.TaxAmount, bonus.NetAmount);
     }
 
     public async Task CancelAsync(int bonusId, string userCode, CancellationToken cancellationToken)
     {
         var bonus = await FindAsync(bonusId, cancellationToken);
-        bonus.Cancel(userCode, clock.GetLocalNow());
+        bonus.Cancel(userCode, Now());
         await repository.SaveAsync(cancellationToken);
     }
 
     public async Task DeleteAsync(int bonusId, string userCode, CancellationToken cancellationToken)
     {
         var bonus = await FindAsync(bonusId, cancellationToken);
-        bonus.Delete(userCode, clock.GetLocalNow());
+        bonus.Delete(userCode, Now());
         await repository.SaveAsync(cancellationToken);
     }
 
     private async Task<Bonus> FindAsync(int bonusId, CancellationToken cancellationToken) =>
         await repository.FindAsync(bonusId, cancellationToken) ??
         throw new BusinessException("BONUS_NOT_FOUND", "El bono no existe o fue eliminado.");
+
+    private DateTimeOffset Now() => TimeZoneInfo.ConvertTime(clock.GetUtcNow(),
+        TimeZoneInfo.FindSystemTimeZoneById("America/Lima"));
 }

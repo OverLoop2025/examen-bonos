@@ -121,6 +121,41 @@ public class BonusRepositoryTests
         .UseSqlServer(Environment.GetEnvironmentVariable("ConnectionStrings__BonusTest"))
         .AddInterceptors(interceptors).Options);
 
+    [Theory(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    [InlineData("2001-01-01T04:59:59+00:00", false)]
+    [InlineData("2001-01-01T05:00:00+00:00", true)]
+    public async Task Servicio_usa_el_mes_de_Lima_aunque_el_sistema_este_en_UTC(string instant, bool accepted)
+    {
+        var user = "reloj-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await using var db = Context();
+            var repository = new BonusRepository(db);
+            var service = new BonusService(repository, new UtcClock(DateTimeOffset.Parse(instant)));
+            var request = new RegisterBonusRequest("TECH1", 101, "2001-01", 2, 10m, "000001");
+            if (!accepted)
+            {
+                var error = await Assert.ThrowsAsync<BusinessException>(() => service.RegisterAsync(request, user, Token));
+                Assert.Equal("INVALID_PERIOD", error.Code);
+            }
+            else
+            {
+                var result = await service.RegisterAsync(request, user, Token);
+                var saved = await repository.FindAsync(result.BonusId, Token);
+                Assert.NotNull(saved);
+                Assert.Equal(TimeSpan.FromHours(-5), saved.CreatedAt.Offset);
+                Assert.Equal(500m, result.GrossAmount);
+            }
+        }
+        finally { await Cleanup(user); }
+    }
+
+    private sealed class UtcClock(DateTimeOffset instant) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => instant;
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
+
     private static async Task Cleanup(string user)
     {
         await using var db = Context();
