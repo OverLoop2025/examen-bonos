@@ -1,0 +1,45 @@
+using BonusTest.Domain.Constants;
+using BonusTest.Domain.Entities;
+using BonusTest.Domain.Exceptions;
+using BonusTest.Application.Common;
+
+namespace BonusTest.Application.Bonuses;
+
+public class BonusService(IBonusRepository repository, TimeProvider clock)
+{
+    public Task<PagedResponse<BonusDto>> ListAsync(BonusFilter filter, CancellationToken cancellationToken) =>
+        repository.ListAsync(filter, cancellationToken);
+
+    public async Task<EmployeeDto> GetEmployeeAsync(string departmentCode, int employeeNumber, CancellationToken cancellationToken)
+    {
+        var employee = await repository.GetEmployeeAsync(departmentCode, employeeNumber, cancellationToken);
+        if (employee is null || employee.EmployeeStateCode != EmployeeStates.Active)
+            throw new BusinessException("EMPLOYEE_NOT_ACTIVE", "Solo se aceptan empleados activos.");
+        return new EmployeeDto(employee.DepartmentCode, employee.EmployeeNumber, employee.FullName,
+            employee.HireDate, employee.MonthlySalary, employee.TaxRate);
+    }
+
+    public async Task<BonusCreatedDto> RegisterAsync(RegisterBonusRequest request, string userCode, CancellationToken cancellationToken)
+    {
+        var bonus = await repository.RegisterAsync(request, userCode, clock.GetLocalNow(), cancellationToken);
+        return new BonusCreatedDto(bonus.BonusId, bonus.StateCode, bonus.GrossAmount, bonus.TaxAmount, bonus.NetAmount);
+    }
+
+    public async Task CancelAsync(int bonusId, string userCode, CancellationToken cancellationToken)
+    {
+        var bonus = await FindAsync(bonusId, cancellationToken);
+        bonus.Cancel(userCode, clock.GetLocalNow());
+        await repository.SaveAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(int bonusId, string userCode, CancellationToken cancellationToken)
+    {
+        var bonus = await FindAsync(bonusId, cancellationToken);
+        bonus.Delete(userCode, clock.GetLocalNow());
+        await repository.SaveAsync(cancellationToken);
+    }
+
+    private async Task<Bonus> FindAsync(int bonusId, CancellationToken cancellationToken) =>
+        await repository.FindAsync(bonusId, cancellationToken) ??
+        throw new BusinessException("BONUS_NOT_FOUND", "El bono no existe o fue eliminado.");
+}

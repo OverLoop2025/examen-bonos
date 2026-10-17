@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace BonusTest.Tests;
 
+[Collection("SQL Server")]
 public class BonusPersistenceTests
 {
     private const string SkipSql = "Defina ConnectionStrings__BonusTest para ejecutar las pruebas SQL.";

@@ -1,0 +1,153 @@
+using System.Data.Common;
+using BonusTest.Application.Bonuses;
+using BonusTest.Domain.Entities;
+using BonusTest.Domain.Exceptions;
+using BonusTest.Infrastructure.Persistence;
+using BonusTest.Infrastructure.Repositories;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
+namespace BonusTest.Tests;
+
+[Collection("SQL Server")]
+public class BonusRepositoryTests
+{
+    private const string SkipSql = "Defina ConnectionStrings__BonusTest para ejecutar las pruebas SQL.";
+    public static bool SqlServerConfigured => BonusPersistenceTests.SqlServerConfigured;
+    private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Listado_ejecuta_count_y_offset_fetch_con_filtros_en_sql_server()
+    {
+        var capture = new CaptureSql();
+        await using var db = Context(capture);
+        await using var transaction = await db.Database.BeginTransactionAsync(Token);
+        var employee = await db.Employees.AsNoTracking().SingleAsync(x => x.DepartmentCode == "TECH1" && x.EmployeeNumber == 101, Token);
+        var reason = await db.BonusReasons.AsNoTracking().SingleAsync(x => x.ReasonCode == "000001", Token);
+        var bonuses = Enumerable.Range(0, 3).Select(_ =>
+        {
+            var bonus = Bonus.Register(employee, "1940-01", 2, 10m, reason, "consulta", DateTimeOffset.Now);
+            bonus.Cancel("consulta", DateTimeOffset.Now);
+            return bonus;
+        }).ToArray();
+        db.Bonuses.AddRange(bonuses);
+        await db.SaveChangesAsync(Token);
+        capture.Commands.Clear();
+
+        var page = await new BonusRepository(db).ListAsync(new BonusFilter
+        {
+            DepartmentCode = "TECH1", EmployeeNumber = 101, Period = "1940-01", StateCode = "0203", PageIndex = 2, PageSize = 1
+        }, Token);
+        Assert.Equal(3, page.TotalRecords);
+        Assert.Single(page.Data);
+        Assert.Equal(bonuses[1].BonusId, page.Data[0].BonusId);
+        Assert.Contains("COUNT(*)", capture.Commands[0]);
+        var sql = capture.Commands[1];
+        Assert.Contains("ORDER BY [b].[BonusId] DESC", sql);
+        Assert.Contains("OFFSET", sql);
+        Assert.Contains("FETCH NEXT", sql);
+        Assert.Contains("[b].[DepartmentCode] =", sql);
+        Assert.Contains("[b].[EmployeeNumber] =", sql);
+        Assert.Contains("[b].[StateCode] =", sql);
+        Assert.Contains("[b].[Period] =", sql);
+        Assert.Contains("[b].[IsDeleted]", sql);
+        Assert.Contains("JOIN [Employee]", sql);
+        Assert.Contains("JOIN [Department]", sql);
+        Assert.Contains("JOIN [BonusReason]", sql);
+        Assert.Contains("JOIN [BonusType]", sql);
+        Assert.Contains("JOIN [State]", sql);
+    }
+
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Repositorio_traduce_version_antigua_a_conflicto_sin_sobrescribir()
+    {
+        var user = "repo-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await using var first = Context();
+            var repository = new BonusRepository(first);
+            var bonus = await repository.RegisterAsync(new RegisterBonusRequest("TECH1", 102, "1941-01", 2, 10m, "000001"), user, DateTimeOffset.Now, Token);
+            await using var second = Context();
+            var staleRepository = new BonusRepository(second);
+            var stale = await staleRepository.FindAsync(bonus.BonusId, Token);
+            Assert.NotNull(stale);
+            bonus.Cancel(user, DateTimeOffset.Now);
+            await repository.SaveAsync(Token);
+            stale.Delete(user, DateTimeOffset.Now);
+            var conflict = await Assert.ThrowsAsync<BusinessException>(() => staleRepository.SaveAsync(Token));
+            Assert.Equal("BONUS_CONFLICT", conflict.Code);
+            await using var verify = Context();
+            var saved = await verify.Bonuses.SingleAsync(x => x.BonusId == bonus.BonusId, Token);
+            Assert.Equal("0203", saved.StateCode);
+            Assert.False(saved.IsDeleted);
+        }
+        finally { await Cleanup(user); }
+    }
+
+    [Fact(Skip = SkipSql, SkipUnless = nameof(SqlServerConfigured))]
+    public async Task Registro_conserva_empleado_y_motivo_hasta_confirmar_la_transaccion()
+    {
+        var user = "repo-" + Guid.NewGuid().ToString("N");
+        var pause = new PauseSave();
+        await using var db = Context(pause);
+        var registration = new BonusRepository(db).RegisterAsync(
+            new RegisterBonusRequest("TECH1", 103, "1942-01", 2, 10m, "000001"), user, DateTimeOffset.Now, Token);
+        try
+        {
+            await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await using var competing = Context();
+            await using var transaction = await competing.Database.BeginTransactionAsync(Token);
+            foreach (var sql in new[]
+            {
+                "SET LOCK_TIMEOUT 200; UPDATE dbo.Employee SET MonthlySalary = MonthlySalary WHERE DepartmentCode = 'TECH1' AND EmployeeNumber = 103",
+                "SET LOCK_TIMEOUT 200; UPDATE dbo.BonusReason SET State = State WHERE ReasonCode = '000001'"
+            })
+            {
+                var blocked = await Assert.ThrowsAsync<SqlException>(() => competing.Database.ExecuteSqlRawAsync(sql, Token));
+                Assert.Equal(1222, blocked.Number);
+            }
+            await competing.Database.ExecuteSqlRawAsync("SET LOCK_TIMEOUT -1", Token);
+        }
+        finally
+        {
+            pause.Resume.TrySetResult();
+            try { await registration; }
+            finally { await Cleanup(user); }
+        }
+    }
+
+    private static AppDbContext Context(params IInterceptor[] interceptors) => new(new DbContextOptionsBuilder<AppDbContext>()
+        .UseSqlServer(Environment.GetEnvironmentVariable("ConnectionStrings__BonusTest"))
+        .AddInterceptors(interceptors).Options);
+
+    private static async Task Cleanup(string user)
+    {
+        await using var db = Context();
+        await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.Bonus WHERE CreatedBy = {user}", CancellationToken.None);
+    }
+
+    private sealed class CaptureSql : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class PauseSave : SaveChangesInterceptor
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Resume { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await Resume.Task.WaitAsync(cancellationToken);
+            return result;
+        }
+    }
+}
