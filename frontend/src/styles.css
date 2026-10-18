@@ -63,8 +63,12 @@ app-notification { display: block; }
 .global-notification { position: fixed; top: 16px; left: 50%; z-index: 20; width: min(560px, calc(100% - 32px)); transform: translateX(-50%); }
 .global-notification .notification { margin: 0; box-shadow: 0 8px 24px #1720331f; }
 body:has(dialog[open]) .global-notification { display: none; }
+/* Dentro del registro el aviso queda fijo sobre el contenido desplazable. */
+.modal-notification { flex-shrink: 0; }
+.modal-notification .notification { margin: 16px 24px 0; }
 
 @media (max-width: 600px) {
   .card { padding: 20px 16px; }
   .modal-header, .modal-body, .modal-footer { padding-left: 16px; padding-right: 16px; }
+  .modal-notification .notification { margin: 12px 16px 0; }
 }

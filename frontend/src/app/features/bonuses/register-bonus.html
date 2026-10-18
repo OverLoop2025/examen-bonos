@@ -5,8 +5,8 @@
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
     </button>
   </header>
+  <app-notification class="modal-notification" />
   <div class="modal-body">
-    <app-notification />
     <form [formGroup]="lookup" (ngSubmit)="search()">
       <fieldset [disabled]="saving()">
         <legend><span class="step">1</span> Empleado</legend>
