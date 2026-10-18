@@ -32,7 +32,7 @@
     </div>
   </form>
   @if (form.controls.employeeNumber.touched && form.controls.employeeNumber.invalid) {
-    <p class="error">El número de empleado solo admite dígitos, por ejemplo 101.</p>
+    <p class="error">Escribe un número de empleado válido, por ejemplo 101.</p>
   }
   @if (form.controls.period.touched && form.controls.period.invalid) {
     <p class="error">El periodo debe tener el formato AAAA-MM, por ejemplo 2026-09.</p>
@@ -74,7 +74,7 @@
                 <td><span [class]="'state state-' + bonus.stateCode">{{ bonus.stateDescription }}</span></td>
                 <td class="actions" [attr.title]="bonus.stateCode === states.Registered ? null : 'Solo los bonos registrados admiten acciones'">
                   <button type="button" class="icon-btn" aria-label="Acciones" [cdkMenuTriggerFor]="actions" [cdkMenuTriggerData]="{ $implicit: bonus }"
-                    [disabled]="busy() || bonus.stateCode !== states.Registered">
+                    [disabled]="busy() || loading() || bonus.stateCode !== states.Registered">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="13" cy="8" r="1.5" /></svg>
                   </button>
                 </td>
@@ -93,7 +93,7 @@
       </nav>
     } @else {
       <div class="empty-state">
-        @if (filtered) {
+        @if (filtered()) {
           <p>No hay bonos para los filtros seleccionados.</p>
           <button type="button" class="btn" (click)="clear()">Limpiar filtros</button>
         } @else {

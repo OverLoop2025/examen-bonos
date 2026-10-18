@@ -1,79 +1,99 @@
-<dialog #dialog aria-labelledby="register-title" (cancel)="escape($event)">
+<dialog #dialog class="register" aria-labelledby="register-title" (cancel)="escape($event)">
   <header class="modal-header">
-    <h2 id="register-title">Registrar bono</h2>
-    <button type="button" class="btn" aria-label="Cerrar registro" (click)="close()" [disabled]="saving()">×</button>
+    <h2 id="register-title">Nuevo bono</h2>
+    <button type="button" class="icon-btn" aria-label="Cerrar registro" (click)="close()" [disabled]="saving()">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+    </button>
   </header>
-  <form [formGroup]="lookup" (ngSubmit)="search()">
-    <fieldset [disabled]="saving()">
-      <legend>Buscar empleado</legend>
-      <div class="grid">
-        <label>Área del empleado
-          <select formControlName="departmentCode">
-            <option value="">Seleccionar</option>
-            @for (department of departments(); track department.departmentCode) {
-              <option [value]="department.departmentCode">{{ department.departmentName }}</option>
-            }
-          </select>
-        </label>
-        <label>Número del empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" /></label>
-        <button class="btn btn-primary" [disabled]="searching()">{{ searching() ? 'Buscando…' : 'Buscar empleado' }}</button>
-      </div>
-      @if (lookup.touched && lookup.invalid) { <p class="error">Selecciona un área e ingresa un número de empleado entero positivo válido.</p> }
-    </fieldset>
-  </form>
-  <app-notification />
-  @if (employee(); as worker) {
-    <dl class="details">
-      <div><dt>Empleado</dt><dd>{{ worker.fullName }}</dd></div>
-      <div><dt>Fecha de ingreso</dt><dd>{{ worker.hireDate.slice(0, 10) }}</dd></div>
-      <div><dt>Sueldo mensual</dt><dd>{{ money(worker.monthlySalary) }}</dd></div>
-      <div><dt>Retención</dt><dd>{{ worker.taxRate }} %</dd></div>
-    </dl>
-  }
-  <form [formGroup]="form" (ngSubmit)="save()">
-    <fieldset [disabled]="saving() || !employee() || !catalogs()">
-      <legend>Datos del bono</legend>
-      <div class="grid">
-        <label>Periodo del bono (mes y año) <input type="month" formControlName="period" min="0001-01" [max]="currentPeriod()" /></label>
-        <label>Tipo de bono
-          <select formControlName="bonusTypeId">
-            @for (type of catalogs()?.types; track type.bonusTypeId) {
-              <option [ngValue]="type.bonusTypeId">{{ type.bonusTypeDescription }}</option>
-            }
-          </select>
-        </label>
-        <label>{{ form.controls.bonusTypeId.value === types.SalaryPercentage ? 'Porcentaje (%)' : 'Monto fijo' }}
-          <input formControlName="value" inputmode="decimal" autocomplete="off" />
-        </label>
-        <label>Motivo
-          <select formControlName="reasonCode">
-            <option value="">Seleccionar</option>
-            @for (reason of catalogs()?.reasons; track reason.reasonCode) {
-              <option [value]="reason.reasonCode">{{ reason.reasonDescription }}</option>
-            }
-          </select>
-        </label>
-      </div>
-      @if (form.controls.period.touched && invalidPeriod) { <p class="error">El periodo es obligatorio y no puede superar el mes actual en Lima.</p> }
-      @if (form.controls.value.touched && !preview()) { <p class="error">Ingresa un valor mayor que cero, hasta el sueldo mensual o 100 %, con hasta 14 decimales.</p> }
-      @if (submitted() && form.controls.reasonCode.invalid) { <p class="error">Selecciona un motivo activo.</p> }
-    </fieldset>
-    @if (preview(); as amounts) {
-      <dl class="preview" aria-label="Vista previa" aria-live="polite">
-        <div><dt>Bruto</dt><dd>{{ money(amounts[0]) }}</dd></div>
-        <div><dt>Retención</dt><dd>{{ money(amounts[1]) }}</dd></div>
-        <div><dt>Neto</dt><dd>{{ money(amounts[2]) }}</dd></div>
-      </dl>
+  <div class="modal-body">
+    <app-notification />
+    <form [formGroup]="lookup" (ngSubmit)="search()">
+      <fieldset [disabled]="saving()">
+        <legend><span class="step">1</span> Empleado</legend>
+        <div class="grid lookup">
+          <label>Área del empleado
+            <select formControlName="departmentCode">
+              <option value="">Seleccionar</option>
+              @for (department of departments(); track department.departmentCode) {
+                <option [value]="department.departmentCode">{{ department.departmentName }}</option>
+              }
+            </select>
+          </label>
+          <label>Número del empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" /></label>
+          <button class="btn" [disabled]="searching()">{{ searching() ? 'Buscando…' : 'Buscar empleado' }}</button>
+        </div>
+        @if (lookup.touched && lookup.invalid) {
+          <p class="error">Selecciona el área y escribe solo el número del empleado, por ejemplo 101.</p>
+        }
+      </fieldset>
+    </form>
+    @if (employee(); as worker) {
+      <section class="employee-card" aria-label="Empleado encontrado">
+        <p class="employee-name">{{ worker.fullName }}</p>
+        <dl>
+          <div><dt>Código</dt><dd>{{ worker.departmentCode }}-{{ worker.employeeNumber }}</dd></div>
+          <div><dt>Fecha de ingreso</dt><dd>{{ worker.hireDate | date: 'dd/MM/yyyy' }}</dd></div>
+          <div><dt>Sueldo mensual</dt><dd>{{ money(worker.monthlySalary) }}</dd></div>
+          <div><dt>Retención</dt><dd>{{ percent(worker.taxRate) }} %</dd></div>
+        </dl>
+      </section>
     }
-    @if (!catalogs()) { <p role="status">Cargando tipos y motivos…</p> }
+    <form id="bonus-form" [formGroup]="form" (ngSubmit)="save()">
+      <fieldset [disabled]="saving() || !employee() || !catalogs()">
+        <legend><span class="step">2</span> Bono</legend>
+        <div class="grid">
+          <label>Periodo del bono <input type="month" formControlName="period" placeholder="AAAA-MM" min="0001-01" [max]="currentPeriod()" /></label>
+          <label>Tipo de bono
+            <select formControlName="bonusTypeId">
+              @for (type of catalogs()?.types; track type.bonusTypeId) {
+                <option [ngValue]="type.bonusTypeId">{{ type.bonusTypeDescription }}</option>
+              }
+            </select>
+          </label>
+          <div class="field">
+            <label>{{ isPercentage ? 'Porcentaje (%)' : 'Monto fijo' }}
+              <input formControlName="value" inputmode="decimal" autocomplete="off" aria-describedby="value-hint" [placeholder]="isPercentage ? 'Ej.: 10' : 'Ej.: 500.00'" />
+            </label>
+            @if (employee(); as worker) {
+              <span class="hint" id="value-hint">{{ isPercentage ? 'Mayor que 0 y hasta 100.' : 'Mayor que 0 y hasta ' + money(worker.monthlySalary) + '.' }}</span>
+            }
+          </div>
+          <label>Motivo
+            <select formControlName="reasonCode">
+              <option value="">Seleccionar</option>
+              @for (reason of catalogs()?.reasons; track reason.reasonCode) {
+                <option [value]="reason.reasonCode">{{ reason.reasonDescription }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        @if (form.controls.period.touched && invalidPeriod) { <p class="error">El periodo es obligatorio y no puede ser posterior al mes actual.</p> }
+        @if (form.controls.value.touched && !preview()) {
+          <p class="error">{{ isPercentage ? 'Ingresa un porcentaje mayor que 0 y hasta 100' : 'Ingresa un monto mayor que 0 y no mayor al sueldo mensual' }}, con 14 decimales como máximo.</p>
+        }
+        @if (submitted() && form.controls.reasonCode.invalid) { <p class="error">Selecciona un motivo.</p> }
+      </fieldset>
+      @if (employee(); as worker) {
+        @let amounts = preview();
+        <div class="ledger" aria-live="polite">
+          <p class="ledger-title">Vista previa</p>
+          <dl class="preview">
+            <div><dt>Bruto</dt><dd>{{ amounts ? money(amounts[0]) : '—' }}</dd></div>
+            <div [class.deducted]="amounts"><dt>Retención ({{ percent(worker.taxRate) }} %)</dt><dd>{{ amounts ? money(amounts[1]) : '—' }}</dd></div>
+            <div class="total"><dt>Neto a pagar</dt><dd>{{ amounts ? money(amounts[2]) : '—' }}</dd></div>
+          </dl>
+        </div>
+      }
+    </form>
     @if (catalogs(); as data) {
       @if (!data.types.length || !data.reasons.length) { <p class="error">No se pudieron cargar los tipos o motivos. Cierra y vuelve a intentarlo.</p> }
     }
-    <footer class="form-actions">
-      <button type="button" class="btn" (click)="close()" [disabled]="saving()">Cancelar</button>
-      <button class="btn btn-primary" [disabled]="saving() || searching() || !employee() || !preview() || form.invalid || invalidPeriod">
-        {{ saving() ? 'Guardando…' : 'Guardar bono' }}
-      </button>
-    </footer>
-  </form>
+  </div>
+  <footer class="modal-footer">
+    @if (!catalogs()) { <span class="muted loading-note" role="status">Cargando tipos y motivos…</span> }
+    <button type="button" class="btn" (click)="close()" [disabled]="saving()">Cancelar</button>
+    <button type="submit" form="bonus-form" class="btn btn-primary" [disabled]="saving() || searching() || !employee() || !preview() || form.invalid || invalidPeriod">
+      {{ saving() ? 'Guardando…' : 'Guardar bono' }}
+    </button>
+  </footer>
 </dialog>

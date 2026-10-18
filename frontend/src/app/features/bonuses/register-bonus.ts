@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { AfterViewInit, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -8,11 +9,11 @@ import { BonusApi } from '../../core/services/bonus-api';
 import { CatalogApi } from '../../core/services/catalog-api';
 import { Notification } from '../../core/services/notification';
 import { NotificationBanner } from '../../core/notification-banner';
-import { currentPeriod, money, previewBonus } from './bonus-preview';
+import { currentPeriod, money, percent, periodPattern, previewBonus } from './bonus-preview';
 
 @Component({
   selector: 'app-register-bonus',
-  imports: [ReactiveFormsModule, NotificationBanner],
+  imports: [DatePipe, ReactiveFormsModule, NotificationBanner],
   templateUrl: './register-bonus.html',
   styleUrl: './register-bonus.css',
 })
@@ -31,7 +32,7 @@ export class RegisterBonus implements AfterViewInit {
     employeeNumber: ['', [Validators.required, Validators.pattern(/^[1-9]\d*$/), Validators.max(2147483647)]],
   });
   protected readonly form = this.fb.group({
-    period: [currentPeriod(), [Validators.required, Validators.pattern(/^\d{4}-(0[1-9]|1[0-2])$/)]],
+    period: [currentPeriod(), [Validators.required, Validators.pattern(periodPattern)]],
     bonusTypeId: [BonusTypes.SalaryPercentage as number, Validators.required],
     value: ['', Validators.required], reasonCode: ['', Validators.required],
   });
@@ -42,7 +43,7 @@ export class RegisterBonus implements AfterViewInit {
   protected readonly submitted = signal(false);
   protected readonly money = money;
   protected readonly currentPeriod = currentPeriod;
-  protected readonly types = BonusTypes;
+  protected readonly percent = percent;
   protected readonly catalogs = toSignal(forkJoin({
     types: this.catalog.getBonusTypes(), reasons: this.catalog.getBonusReasons(),
   }).pipe(catchError(() => of({ types: [], reasons: [] }))), { initialValue: null });
@@ -55,9 +56,12 @@ export class RegisterBonus implements AfterViewInit {
     const period = this.form.controls.period.value;
     return this.form.controls.period.invalid || period < '0001-01' || period > currentPeriod();
   }
+  protected get isPercentage() { return this.form.controls.bonusTypeId.value === BonusTypes.SalaryPercentage; }
 
   constructor() {
     this.notification.clear();
+    // Al cambiar el tipo, el valor escrito deja de tener sentido.
+    this.form.controls.bonusTypeId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.form.controls.value.reset(''));
     this.lookup.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
       this.lookupRequest?.unsubscribe();
       this.employee.set(null);

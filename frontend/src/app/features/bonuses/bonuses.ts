@@ -47,7 +47,7 @@ export class Bonuses {
   protected readonly states = BonusStates;
   protected readonly types = BonusTypes;
   protected readonly percent = percent;
-  protected get filtered() { return Object.keys(this.applied).length > 0; }
+  protected readonly filtered = signal(false);
 
   protected readonly departments = toSignal(this.catalogApi.getDepartments().pipe(catchError(() => of([]))), { initialValue: [] });
   protected readonly bonusStates = toSignal(this.catalogApi.getStates(MasterStateCodes.Bonus).pipe(catchError(() => of([]))), { initialValue: [] });
@@ -62,7 +62,10 @@ export class Bonuses {
       );
     }), takeUntilDestroyed()).subscribe(page => {
       if (page && page.pageNumber > Math.max(page.totalPages, 1)) this.load(Math.max(page.totalPages, 1));
-      else this.page.set(page);
+      else {
+        this.filtered.set(Object.keys(this.applied).length > 0);
+        this.page.set(page);
+      }
     });
   }
 

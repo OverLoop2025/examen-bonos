@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { previewBonus, currentPeriod, money } = require('../.angular/tests/features/bonuses/bonus-preview.js');
+const { previewBonus, currentPeriod, money, percent, periodPattern } = require('../.angular/tests/features/bonuses/bonus-preview.js');
 
 for (const [salary, tax, type, value, expected] of [
   ['5000.00', '8', 2, '10', ['500.00', '40.00', '460.00']],
@@ -25,4 +25,13 @@ test('Mes actual usa Lima antes y después de medianoche, incluso al cambiar de 
 });
 test('Formato monetario conserva céntimos fuera del rango exacto de number', () => {
   assert.equal(money('99999999999999.99'), '99,999,999,999,999.99');
+});
+
+test('Porcentaje sin ceros sobrantes', () => {
+  assert.deepEqual(['8.00', '12.50', '10', '0.0125'].map(percent), ['8', '12.5', '10', '0.0125']);
+});
+
+test('Periodo con formato AAAA-MM y mes válido', () => {
+  assert.deepEqual(['2026-09', '2026-12', '2026-13', '2026-00', '2026-9', '26-09'].map(p => periodPattern.test(p)),
+    [true, true, false, false, false, false]);
 });
