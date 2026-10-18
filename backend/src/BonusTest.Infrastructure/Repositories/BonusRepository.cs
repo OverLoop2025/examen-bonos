@@ -53,7 +53,7 @@ public class BonusRepository(AppDbContext context) : IBonusRepository
     {
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var employee = await GetEmployeeAsync(request.DepartmentCode, request.EmployeeNumber, cancellationToken) ??
-            throw new BusinessException("EMPLOYEE_NOT_ACTIVE", "Solo se aceptan empleados activos.");
+            throw new BusinessException("EMPLOYEE_NOT_FOUND", "No existe un empleado con esa área y número.");
         var reason = await context.BonusReasons.AsNoTracking()
             .SingleOrDefaultAsync(x => x.ReasonCode == request.ReasonCode, cancellationToken) ??
             throw new BusinessException("REASON_NOT_ACTIVE", "El motivo debe estar activo.");

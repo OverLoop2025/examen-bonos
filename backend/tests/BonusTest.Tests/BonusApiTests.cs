@@ -36,10 +36,10 @@ public class BonusApiTests : IAsyncLifetime
         Assert.Equal(8m, employee.GetProperty("taxRate").GetDecimal());
         Assert.False(string.IsNullOrWhiteSpace(employee.GetProperty("fullName").GetString()));
         Assert.True(employee.TryGetProperty("hireDate", out _));
-        foreach (var path in new[] { "VENTA/202", "VENTA/101", "TECH1/999" })
+        foreach (var (path, code) in new[] { ("VENTA/202", "EMPLOYEE_NOT_ACTIVE"), ("VENTA/101", "EMPLOYEE_NOT_FOUND"), ("TECH1/999", "EMPLOYEE_NOT_FOUND") })
         {
             using var invalid = await client.GetAsync("api/v1/Bonus/employee/" + path, Token);
-            await Conflict(invalid, "EMPLOYEE_NOT_ACTIVE");
+            await Conflict(invalid, code);
         }
     }
 
@@ -93,7 +93,7 @@ public class BonusApiTests : IAsyncLifetime
     [InlineData("1951-01", 1, 5000.01, "TECH1", 101, "000001", "INVALID_BONUS_VALUE")]
     [InlineData("1951-01", 3, 10, "TECH1", 101, "000001", "INVALID_BONUS_TYPE")]
     [InlineData("1951-01", 2, 10, "VENTA", 202, "000001", "EMPLOYEE_NOT_ACTIVE")]
-    [InlineData("1951-01", 2, 10, "VENTA", 101, "000001", "EMPLOYEE_NOT_ACTIVE")]
+    [InlineData("1951-01", 2, 10, "VENTA", 101, "000001", "EMPLOYEE_NOT_FOUND")]
     [InlineData("1951-01", 2, 10, "TECH1", 101, "000004", "REASON_NOT_ACTIVE")]
     [InlineData("1951-01", 2, 10, "TECH1", 101, "999999", "REASON_NOT_ACTIVE")]
     [InlineData("1951-1", 2, 10, "TECH1", 101, "000001", "INVALID_PERIOD")]
