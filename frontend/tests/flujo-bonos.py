@@ -42,9 +42,15 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page(viewport={'width': 1440, 'height': 1000})
-        errors, requests = [], []
+        errors, requests, mutations = [], [], []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('request', lambda r: requests.append(r.url) if '/api/v1/' in r.url else None)
+        page.on('request', lambda r: mutations.append((r.method, r.url)) if r.method in ('POST', 'PUT', 'DELETE') else None)
+
+        async def native_dialog(dialog):
+            errors.append('Se abrió una confirmación del navegador.')
+            await dialog.dismiss()
+        page.on('dialog', native_dialog)
 
         async def identify(route):
             assert route.request.headers.get('usercode') == 'candidato'
@@ -52,7 +58,7 @@ async def main():
         await page.route('**/api/v1/**', identify)
 
         async def register(period, fixed=False, status=201):
-            await page.get_by_role('button', name='Nuevo registro').click()
+            await page.get_by_role('button', name='Nuevo bono').click()
             d = page.get_by_role('dialog')
             await d.get_by_label('Área del empleado').select_option('TECH1')
             await d.get_by_label('Número del empleado', exact=True).fill('101')
@@ -70,21 +76,37 @@ async def main():
             if status == 201:
                 await expect(d).to_have_count(0)
                 return (await response.json())['bonusId']
+            await expect(page.locator('[role=alert]:visible')).to_have_count(1)
+            await expect(d.get_by_role('alert')).to_contain_text('El empleado ya tiene un bono vigente en ese periodo.')
             await d.get_by_role('button', name='Cancelar', exact=True).click()
+            await expect(page.locator('[role=alert]:visible')).to_have_count(0)
 
         async def action(name, method, suffix):
-            page.once('dialog', lambda d: d.accept())
+            before = sum(m == method and u.endswith(suffix) for m, u in mutations)
+            await page.locator('tbody tr').first.get_by_role('button', name=name, exact=True).click()
+            confirmation = page.get_by_role('dialog', name='¿' + name + ' este bono?')
+            await expect(confirmation.get_by_text('Andrea Torres Vega', exact=True)).to_be_visible()
             async with page.expect_response(lambda r: r.request.method == method and r.url.endswith(suffix)) as response:
-                await page.locator('tbody tr').first.get_by_role('button', name=name, exact=True).click()
+                await confirmation.get_by_role('button', name=name + ' bono', exact=True).evaluate('(b) => { b.click(); b.click(); }')
             assert (await response.value).status == 204
+            assert sum(m == method and u.endswith(suffix) for m, u in mutations) == before + 1
 
         try:
             await page.goto(url + '/bonuses')
             await expect(page.get_by_text('No hay bonos para los filtros seleccionados.')).to_be_visible()
             paid = await register('1999-01')
             await expect(page.locator('tbody tr')).to_have_count(1)
-            page.once('dialog', lambda d: d.dismiss())
-            await page.get_by_role('button', name='Pagar', exact=True).click()
+            pay = page.get_by_role('button', name='Pagar', exact=True)
+            await pay.click()
+            confirmation = page.get_by_role('dialog', name='¿Pagar este bono?')
+            await expect(confirmation).to_be_visible()
+            await expect(confirmation.get_by_role('button', name='Volver')).to_be_focused()
+            await confirmation.get_by_role('button', name='Volver').click()
+            await expect(pay).to_be_focused()
+            await pay.click()
+            await page.keyboard.press('Escape')
+            await expect(confirmation).not_to_be_visible()
+            await expect(pay).to_be_focused()
             assert sql(f'SELECT StateCode FROM dbo.Bonus WHERE BonusId={paid};') == '0201'
             await action('Pagar', 'POST', '/pay')
             await expect(page.locator('tbody').get_by_text('Pagado', exact=True)).to_be_visible()

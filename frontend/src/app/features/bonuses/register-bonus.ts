@@ -7,11 +7,12 @@ import { BonusTypes, Department } from '../../core/models/catalog';
 import { BonusApi } from '../../core/services/bonus-api';
 import { CatalogApi } from '../../core/services/catalog-api';
 import { Notification } from '../../core/services/notification';
+import { NotificationBanner } from '../../core/notification-banner';
 import { currentPeriod, money, previewBonus } from './bonus-preview';
 
 @Component({
   selector: 'app-register-bonus',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, NotificationBanner],
   templateUrl: './register-bonus.html',
   styleUrl: './register-bonus.css',
 })
@@ -97,6 +98,7 @@ export class RegisterBonus implements AfterViewInit {
 
   protected close(saved = false) {
     if (this.saving() && !saved) return;
+    if (!saved) this.notification.clear();
     this.dialog().nativeElement.close();
     this.closed.emit(saved);
   }

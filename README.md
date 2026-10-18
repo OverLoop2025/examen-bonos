@@ -41,7 +41,7 @@ Si algo no arranca, revisa `docker compose ps -a` y `docker compose logs --tail 
 
 ## Primera prueba
 
-La tabla empieza vacía. Pulsa **Nuevo registro**, selecciona **Tecnología**, escribe solo **101** y busca al empleado. Debe aparecer Andrea Torres Vega, sueldo 5,000.00 y retención 8 %.
+La tabla empieza vacía. Pulsa **Nuevo bono**, selecciona **Tecnología**, escribe solo **101** y busca al empleado. Debe aparecer Andrea Torres Vega, sueldo 5,000.00 y retención 8 %.
 
 Elige el mes actual o uno anterior, **Porcentaje del sueldo**, valor **10** y un motivo. La vista previa debe mostrar **500.00 de bruto, 40.00 de retención y 460.00 de neto**. Guarda y comprueba la fila.
 

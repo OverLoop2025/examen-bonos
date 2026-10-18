@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, finalize, of, startWith, Subject, switchMap } from 'rxjs';
@@ -8,12 +8,13 @@ import { PagedResponse } from '../../core/models/paged-response';
 import { BonusApi } from '../../core/services/bonus-api';
 import { CatalogApi } from '../../core/services/catalog-api';
 import { Notification } from '../../core/services/notification';
+import { NotificationBanner } from '../../core/notification-banner';
 import { money } from './bonus-preview';
 import { RegisterBonus } from './register-bonus';
 
 @Component({
   selector: 'app-bonuses',
-  imports: [ReactiveFormsModule, RegisterBonus],
+  imports: [ReactiveFormsModule, RegisterBonus, NotificationBanner],
   templateUrl: './bonuses.html',
   styleUrl: './bonuses.css',
 })
@@ -21,6 +22,7 @@ export class Bonuses {
   private readonly catalogApi = inject(CatalogApi);
   private readonly api = inject(BonusApi);
   private readonly notification = inject(Notification);
+  private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly requests = new Subject<number>();
   private applied: BonusFilter = {};
   protected readonly form = inject(FormBuilder).nonNullable.group({
@@ -31,6 +33,14 @@ export class Bonuses {
   protected readonly failed = signal(false);
   protected readonly busy = signal(false);
   protected readonly registering = signal(false);
+  private readonly confirmation = viewChild.required<ElementRef<HTMLDialogElement>>('confirmation');
+  protected readonly selected = signal<{ bonus: Bonus; action: 'pay' | 'cancel' | 'delete' } | null>(null);
+  protected readonly labels = { pay: 'Pagar', cancel: 'Anular', delete: 'Eliminar' };
+  protected readonly consequences = {
+    pay: 'Se repartirá el bruto entre los proyectos y el bono quedará Pagado.',
+    cancel: 'El bono quedará Anulado y se conservará en el listado.',
+    delete: 'El bono dejará de aparecer en el listado. Se conservará su historial.',
+  };
   protected readonly page = signal<PagedResponse<Bonus> | null>(null);
   protected readonly money = money;
   protected readonly states = BonusStates;
@@ -71,8 +81,23 @@ export class Bonuses {
 
   protected change(bonus: Bonus, action: 'pay' | 'cancel' | 'delete') {
     if (this.busy() || this.loading() || bonus.stateCode !== BonusStates.Registered) return;
-    const label = { pay: 'Pagar', cancel: 'Anular', delete: 'Eliminar' }[action];
-    if (!window.confirm(`¿${label} el bono de ${bonus.fullName} del periodo ${bonus.period}?`)) return;
+    this.notification.clear();
+    this.selected.set({ bonus, action });
+    // El contenido debe estar listo antes de recibir el foco.
+    this.changeDetector.detectChanges();
+    this.confirmation().nativeElement.showModal();
+  }
+
+  protected dismissConfirmation() {
+    this.confirmation().nativeElement.close();
+    this.selected.set(null);
+  }
+
+  protected confirmChange() {
+    const selected = this.selected();
+    if (!selected || this.busy() || this.loading()) return;
+    const { bonus, action } = selected;
+    this.dismissConfirmation();
     this.busy.set(true);
     this.api[action](bonus.bonusId).pipe(
       finalize(() => this.busy.set(false)),

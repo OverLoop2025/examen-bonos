@@ -1,23 +1,22 @@
 <section class="card">
   <header class="card-header">
-    <h2>Bonos de desempeño</h2>
-    <button type="button" class="btn btn-primary" [disabled]="busy() || !departments().length" (click)="registering.set(true)">Nuevo registro</button>
+    <h1>Bonos de desempeño</h1>
+    <button type="button" class="btn btn-primary" [disabled]="busy() || !departments().length" (click)="registering.set(true)">Nuevo bono</button>
   </header>
-  <p class="hint" id="employee-filter-help">Filtros opcionales. Número de empleado: solo números (ej.: 101), sin el código del área.</p>
   <form class="filters" [formGroup]="form" (ngSubmit)="search()">
     <label>Área
       <select formControlName="departmentCode">
-        <option value="">Todas</option>
+        <option value="">Todas las áreas</option>
         @for (department of departments(); track department.departmentCode) {
           <option [value]="department.departmentCode">{{ department.departmentName }}</option>
         }
       </select>
     </label>
-    <label>Número de empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" aria-describedby="employee-filter-help" /></label>
+    <label>Número de empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" /></label>
     <label>Periodo (mes y año) <input type="month" formControlName="period" /></label>
     <label>Estado
       <select formControlName="stateCode">
-        <option value="">Todos</option>
+        <option value="">Todos los estados</option>
         @for (state of bonusStates(); track state.stateCode) {
           <option [value]="state.stateCode">{{ state.stateDescription }}</option>
         }
@@ -32,23 +31,23 @@
   @if (loading()) { <p role="status">Cargando bonos…</p> }
   @if (failed()) { <p role="status">No se pudo cargar el listado. <button class="btn" (click)="search()">Reintentar</button></p> }
   @if (page(); as result) {
-    <p role="status">{{ result.totalRecords }} {{ result.totalRecords === 1 ? 'registro' : 'registros' }} · Página {{ result.pageNumber }} de {{ result.totalPages || 1 }}</p>
+    <p class="results-count" role="status">{{ result.totalRecords }} {{ result.totalRecords === 1 ? 'registro' : 'registros' }} · Página {{ result.pageNumber }} de {{ result.totalPages || 1 }}</p>
     @if (result.data.length) {
       <div class="table-wrap" tabindex="0" role="region" aria-label="Listado de bonos">
         <table>
           <thead><tr>
             <th>Acciones</th><th>Estado</th><th>Periodo</th><th>Área</th><th>Empleado</th><th>Nombre</th>
-            <th>Tipo</th><th>Valor</th><th>Motivo</th><th>Bruto</th><th>Retención</th><th>Neto</th>
+            <th>Tipo</th><th class="amount">Valor</th><th>Motivo</th><th class="amount">Bruto</th><th class="amount">Retención</th><th class="amount">Neto</th>
           </tr></thead>
           <tbody>
             @for (bonus of result.data; track bonus.bonusId) {
               <tr>
                 <td class="actions">
-                  <button class="btn" (click)="change(bonus, 'pay')" [disabled]="busy() || bonus.stateCode !== states.Registered">Pagar</button>
-                  <button class="btn" (click)="change(bonus, 'cancel')" [disabled]="busy() || bonus.stateCode !== states.Registered">Anular</button>
-                  <button class="btn" (click)="change(bonus, 'delete')" [disabled]="busy() || bonus.stateCode !== states.Registered">Eliminar</button>
+                  <button class="btn btn-pay" (click)="change(bonus, 'pay')" [disabled]="busy() || bonus.stateCode !== states.Registered">Pagar</button>
+                  <button class="btn btn-cancel" (click)="change(bonus, 'cancel')" [disabled]="busy() || bonus.stateCode !== states.Registered">Anular</button>
+                  <button class="btn btn-delete" (click)="change(bonus, 'delete')" [disabled]="busy() || bonus.stateCode !== states.Registered">Eliminar</button>
                 </td>
-                <td>{{ bonus.stateDescription }}</td><td>{{ bonus.period }}</td><td>{{ bonus.departmentName }}</td>
+                <td><span [class]="'state state-' + bonus.stateCode">{{ bonus.stateDescription }}</span></td><td>{{ bonus.period }}</td><td>{{ bonus.departmentName }}</td>
                 <td>{{ bonus.departmentCode }}-{{ bonus.employeeNumber }}</td><td>{{ bonus.fullName }}</td>
                 <td>{{ bonus.bonusTypeDescription }}</td>
                 <td class="amount">{{ bonus.bonusTypeId === types.SalaryPercentage ? percent(bonus.value) + ' %' : money(bonus.value) }}</td>
@@ -60,8 +59,7 @@
         </table>
       </div>
     } @else {
-      <p>No hay bonos para los filtros seleccionados.</p>
-      <p class="hint">Prueba con Limpiar para ver todos o pulsa Nuevo registro para crear un bono.</p>
+      <div class="empty-state"><p>No hay bonos para los filtros seleccionados.</p><span>Busca otro periodo o registra un bono.</span></div>
     }
     <nav class="pagination" aria-label="Paginación de bonos">
       <button class="btn" [disabled]="busy() || result.pageNumber <= 1" (click)="load(result.pageNumber - 1)">Anterior</button>
@@ -70,6 +68,22 @@
     </nav>
   }
 </section>
+<dialog #confirmation class="confirmation" aria-labelledby="confirm-title" (cancel)="$event.preventDefault(); dismissConfirmation()">
+  @if (selected(); as selection) {
+    <h2 id="confirm-title">¿{{ labels[selection.action] }} este bono?</h2>
+    <app-notification />
+    <p class="confirmation-employee">{{ selection.bonus.fullName }}</p>
+    <dl class="confirmation-details">
+      <div><dt>Periodo</dt><dd>{{ selection.bonus.period }}</dd></div>
+      <div><dt>Bruto</dt><dd>{{ money(selection.bonus.grossAmount) }}</dd></div>
+    </dl>
+    <p class="confirmation-consequence">{{ consequences[selection.action] }}</p>
+    <footer class="form-actions">
+      <button type="button" class="btn" autofocus (click)="dismissConfirmation()">Volver</button>
+      <button type="button" [class]="'btn btn-' + selection.action" (click)="confirmChange()">{{ labels[selection.action] }} bono</button>
+    </footer>
+  }
+</dialog>
 @if (registering()) {
   <app-register-bonus [departments]="departments()" (closed)="closeRegistration($event)" />
 }

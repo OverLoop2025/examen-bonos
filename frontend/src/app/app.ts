@@ -1,13 +1,11 @@
-import { Component, inject } from '@angular/core';
+import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { Notification } from './core/services/notification';
+import { NotificationBanner } from './core/notification-banner';
 
 @Component({
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, NotificationBanner],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',
 })
-export class App {
-  protected readonly notification = inject(Notification);
-}
+export class App {}

@@ -1,12 +1,20 @@
-dialog { width: min(720px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 20px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
-dialog::backdrop { background: #0007; }
-.modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-h2 { margin: 0 0 12px; }
-fieldset { border: 0; padding: 12px 0; margin: 0; min-width: 0; }
-legend { font-weight: 600; }
-.grid, .details, .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
-.grid { align-items: end; }
-.details, .preview { padding: 12px; background: var(--background); border-radius: 6px; }
-dt { font-size: .85rem; color: var(--text-muted); }
-dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-footer { justify-content: end; margin-top: 16px; }
+fieldset { border: 0; padding: 0; margin: 0 0 24px; min-width: 0; }
+legend { padding: 0; margin-bottom: 14px; font-weight: 600; font-size: .95rem; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 18px; }
+form:first-of-type .grid { grid-template-columns: 1fr 1fr auto; }
+.details { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 18px; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 10px; }
+.details div:first-child { grid-column: 1 / -1; }
+.details dt, .preview dt { font-size: .8rem; color: var(--text-muted); }
+dd { margin: 5px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.details div:first-child dd { font-size: 1.05rem; font-weight: 600; }
+.preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; margin: 0; background: var(--background); border-radius: 10px; text-align: right; }
+.preview dd { font-size: 1.1rem; font-weight: 600; }
+.preview div:last-child dd { color: var(--primary); }
+footer { justify-content: end; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) {
+  .grid, form:first-of-type .grid { grid-template-columns: 1fr; gap: 14px; }
+  .details { grid-template-columns: 1fr 1fr; }
+  .preview { gap: 8px; padding: 16px 12px; }
+  .preview dd { font-size: .95rem; }
+  footer .btn { flex: 1; }
+}
