@@ -69,6 +69,7 @@ async def main():
             await d.get_by_label('Monto fijo' if fixed else 'Porcentaje (%)', exact=True).fill('0.125' if fixed else '10')
             await d.get_by_label('Motivo').select_option('000001')
             assert await d.locator('.preview dd').all_text_contents() == (['0.13', '0.01', '0.12'] if fixed else ['500.00', '40.00', '460.00'])
+            await d.locator('.modal-body').evaluate('b => b.scrollTo(0, b.scrollHeight)')
             async with page.expect_response(lambda r: r.url == url + '/api/v1/Bonus' and r.request.method == 'POST') as response:
                 await d.get_by_role('button', name='Guardar bono').click()
             response = await response.value
@@ -78,6 +79,7 @@ async def main():
                 return (await response.json())['bonusId']
             await expect(page.locator('[role=alert]:visible')).to_have_count(1)
             await expect(d.get_by_role('alert')).to_contain_text('El empleado ya tiene un bono vigente en ese periodo.')
+            await expect(d.get_by_role('alert')).to_be_in_viewport()
             await d.get_by_role('button', name='Cancelar', exact=True).click()
             await expect(page.locator('[role=alert]:visible')).to_have_count(0)
 
@@ -95,6 +97,23 @@ async def main():
         try:
             await page.goto(url + '/bonuses')
             await expect(page.get_by_text('Aún no hay bonos registrados.')).to_be_visible()
+            await page.get_by_label('Estado').select_option('0202')
+            await page.get_by_role('button', name='Buscar', exact=True).click()
+            await expect(page.get_by_text('No hay bonos para los filtros seleccionados.')).to_be_visible()
+            await page.get_by_role('button', name='Limpiar filtros').click()
+            await expect(page.get_by_text('Aún no hay bonos registrados.')).to_be_visible()
+            await page.get_by_role('button', name='Nuevo bono').click()
+            d = page.get_by_role('dialog')
+            await d.get_by_label('Área del empleado').select_option('TECH1')
+            await d.get_by_label('Número del empleado', exact=True).fill('101')
+            await d.get_by_role('button', name='Buscar empleado', exact=True).click()
+            await expect(d.get_by_text('Andrea Torres Vega', exact=True)).to_be_visible()
+            await d.get_by_label('Porcentaje (%)', exact=True).fill('10')
+            await expect(d.locator('.preview dd')).to_have_text(['500.00', '40.00', '460.00'])
+            await d.get_by_label('Tipo de bono').select_option(label='Monto fijo')
+            await expect(d.get_by_label('Monto fijo', exact=True)).to_have_value('')
+            await expect(d.locator('.preview dd')).to_have_text(['—', '—', '—'])
+            await d.get_by_role('button', name='Cancelar', exact=True).click()
             paid = await register('1999-01')
             await expect(page.locator('tbody tr')).to_have_count(1)
             menu = page.locator('tbody tr').first.get_by_role('button', name='Acciones')
@@ -117,7 +136,9 @@ async def main():
             await expect(menu).to_be_disabled()
             assert sql(f'SELECT CAST(SUM(Amount) AS varchar(30)) FROM dbo.BonusAllocation WHERE BonusId={paid};') == '500.00'
             assert sql(f"SELECT COUNT(*) FROM dbo.Bonus WHERE BonusId={paid} AND StateCode='0202' AND ModifiedBy=N'{operator}' AND ModifiedAt>=CreatedAt;") == '1'
+            await page.set_viewport_size({'width': 1366, 'height': 700})
             await register('1999-01', status=409)
+            await page.set_viewport_size({'width': 1440, 'height': 1000})
             deleted = await register('1999-02', fixed=True)
             await expect(page.locator('tbody tr')).to_have_count(2)
             await action('Eliminar', 'DELETE', '/' + str(deleted))
