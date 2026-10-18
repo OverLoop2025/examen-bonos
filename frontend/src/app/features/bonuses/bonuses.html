@@ -1,8 +1,12 @@
 <section class="card">
-  <header class="card-header">
-    <h1>Bonos de desempeño</h1>
+  <header class="page-header">
+    <div>
+      <h1>Bonos de desempeño</h1>
+      <p class="muted">Busca, registra y gestiona los bonos de cada periodo.</p>
+    </div>
     <button type="button" class="btn btn-primary" [disabled]="busy() || !departments().length" (click)="registering.set(true)">Nuevo bono</button>
   </header>
+
   <form class="filters" [formGroup]="form" (ngSubmit)="search()">
     <label>Área
       <select formControlName="departmentCode">
@@ -13,7 +17,7 @@
       </select>
     </label>
     <label>Número de empleado <input formControlName="employeeNumber" inputmode="numeric" placeholder="Ej.: 101" /></label>
-    <label>Periodo (mes y año) <input type="month" formControlName="period" /></label>
+    <label>Periodo <input type="month" formControlName="period" placeholder="AAAA-MM" [class.empty]="!form.controls.period.value" /></label>
     <label>Estado
       <select formControlName="stateCode">
         <option value="">Todos los estados</option>
@@ -27,60 +31,107 @@
       <button type="button" class="btn" (click)="clear()" [disabled]="busy()">Limpiar</button>
     </div>
   </form>
-  @if (form.invalid && form.touched) { <p class="error">El número de empleado debe ser un entero positivo válido.</p> }
-  @if (loading()) { <p role="status">Cargando bonos…</p> }
-  @if (failed()) { <p role="status">No se pudo cargar el listado. <button class="btn" (click)="search()">Reintentar</button></p> }
-  @if (page(); as result) {
-    <p class="results-count" role="status">{{ result.totalRecords }} {{ result.totalRecords === 1 ? 'registro' : 'registros' }} · Página {{ result.pageNumber }} de {{ result.totalPages || 1 }}</p>
+  @if (form.controls.employeeNumber.touched && form.controls.employeeNumber.invalid) {
+    <p class="error">El número de empleado solo admite dígitos, por ejemplo 101.</p>
+  }
+  @if (form.controls.period.touched && form.controls.period.invalid) {
+    <p class="error">El periodo debe tener el formato AAAA-MM, por ejemplo 2026-09.</p>
+  }
+
+  @if (failed()) {
+    <div class="empty-state" role="alert">
+      <p>No se pudo cargar el listado.</p>
+      <button type="button" class="btn" (click)="search()">Reintentar</button>
+    </div>
+  } @else if (page(); as result) {
+    <p class="table-meta" role="status">
+      {{ result.totalRecords }} {{ result.totalRecords === 1 ? 'bono' : 'bonos' }}
+      @if (loading()) { <span class="muted">· Actualizando…</span> }
+    </p>
     @if (result.data.length) {
-      <div class="table-wrap" tabindex="0" role="region" aria-label="Listado de bonos">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Listado de bonos" [class.loading]="loading()" [attr.aria-busy]="loading()">
         <table>
-          <thead><tr>
-            <th>Acciones</th><th>Estado</th><th>Periodo</th><th>Área</th><th>Empleado</th><th>Nombre</th>
-            <th>Tipo</th><th class="amount">Valor</th><th>Motivo</th><th class="amount">Bruto</th><th class="amount">Retención</th><th class="amount">Neto</th>
-          </tr></thead>
+          <thead>
+            <tr>
+              <th>Periodo</th><th>Empleado</th><th>Tipo</th><th class="amount">Monto o %</th><th>Motivo</th>
+              <th class="amount">Bruto</th><th class="amount">Retención</th><th class="amount">Neto</th><th>Estado</th><th class="actions">Acciones</th>
+            </tr>
+          </thead>
           <tbody>
             @for (bonus of result.data; track bonus.bonusId) {
               <tr>
-                <td class="actions">
-                  <button class="btn btn-pay" (click)="change(bonus, 'pay')" [disabled]="busy() || bonus.stateCode !== states.Registered">Pagar</button>
-                  <button class="btn btn-cancel" (click)="change(bonus, 'cancel')" [disabled]="busy() || bonus.stateCode !== states.Registered">Anular</button>
-                  <button class="btn btn-delete" (click)="change(bonus, 'delete')" [disabled]="busy() || bonus.stateCode !== states.Registered">Eliminar</button>
+                <td>{{ bonus.period }}</td>
+                <td class="employee">
+                  <strong>{{ bonus.fullName }}</strong>
+                  <span>{{ bonus.departmentCode }}-{{ bonus.employeeNumber }} · {{ bonus.departmentName }}</span>
                 </td>
-                <td><span [class]="'state state-' + bonus.stateCode">{{ bonus.stateDescription }}</span></td><td>{{ bonus.period }}</td><td>{{ bonus.departmentName }}</td>
-                <td>{{ bonus.departmentCode }}-{{ bonus.employeeNumber }}</td><td>{{ bonus.fullName }}</td>
-                <td>{{ bonus.bonusTypeDescription }}</td>
+                <td class="wrap">{{ bonus.bonusTypeDescription }}</td>
                 <td class="amount">{{ bonus.bonusTypeId === types.SalaryPercentage ? percent(bonus.value) + ' %' : money(bonus.value) }}</td>
-                <td>{{ bonus.reasonDescription }}</td><td class="amount">{{ money(bonus.grossAmount) }}</td>
-                <td class="amount">{{ money(bonus.taxAmount) }}</td><td class="amount">{{ money(bonus.netAmount) }}</td>
+                <td class="wrap">{{ bonus.reasonDescription }}</td>
+                <td class="amount">{{ money(bonus.grossAmount) }}</td>
+                <td class="amount">{{ money(bonus.taxAmount) }}</td>
+                <td class="amount net">{{ money(bonus.netAmount) }}</td>
+                <td><span [class]="'state state-' + bonus.stateCode">{{ bonus.stateDescription }}</span></td>
+                <td class="actions" [attr.title]="bonus.stateCode === states.Registered ? null : 'Solo los bonos registrados admiten acciones'">
+                  <button type="button" class="icon-btn" aria-label="Acciones" [cdkMenuTriggerFor]="actions" [cdkMenuTriggerData]="{ $implicit: bonus }"
+                    [disabled]="busy() || bonus.stateCode !== states.Registered">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="13" cy="8" r="1.5" /></svg>
+                  </button>
+                </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+      <nav class="pagination" aria-label="Paginación de bonos">
+        <span class="muted">Mostrando {{ (result.pageNumber - 1) * result.pageSize + 1 }}–{{ (result.pageNumber - 1) * result.pageSize + result.data.length }} de {{ result.totalRecords }}</span>
+        <div class="form-actions">
+          <button type="button" class="btn" [disabled]="busy() || result.pageNumber <= 1" (click)="load(result.pageNumber - 1)">Anterior</button>
+          <span class="muted">Página {{ result.pageNumber }} de {{ result.totalPages || 1 }}</span>
+          <button type="button" class="btn" [disabled]="busy() || result.pageNumber >= result.totalPages" (click)="load(result.pageNumber + 1)">Siguiente</button>
+        </div>
+      </nav>
     } @else {
-      <div class="empty-state"><p>No hay bonos para los filtros seleccionados.</p><span>Busca otro periodo o registra un bono.</span></div>
+      <div class="empty-state">
+        @if (filtered) {
+          <p>No hay bonos para los filtros seleccionados.</p>
+          <button type="button" class="btn" (click)="clear()">Limpiar filtros</button>
+        } @else {
+          <p>Aún no hay bonos registrados.</p>
+          <span class="muted">Usa «Nuevo bono» para registrar el primero.</span>
+        }
+      </div>
     }
-    <nav class="pagination" aria-label="Paginación de bonos">
-      <button class="btn" [disabled]="busy() || result.pageNumber <= 1" (click)="load(result.pageNumber - 1)">Anterior</button>
-      <span>{{ result.pageNumber }} / {{ result.totalPages || 1 }}</span>
-      <button class="btn" [disabled]="busy() || result.pageNumber >= result.totalPages" (click)="load(result.pageNumber + 1)">Siguiente</button>
-    </nav>
+  } @else {
+    <p class="table-meta muted" role="status">Cargando bonos…</p>
   }
 </section>
+
+<ng-template #actions let-bonus>
+  <div class="menu" cdkMenu>
+    <button type="button" class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="change(bonus, 'pay')">Pagar</button>
+    <button type="button" class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="change(bonus, 'cancel')">Anular</button>
+    <hr />
+    <button type="button" class="menu-item danger" cdkMenuItem (cdkMenuItemTriggered)="change(bonus, 'delete')">Eliminar</button>
+  </div>
+</ng-template>
+
 <dialog #confirmation class="confirmation" aria-labelledby="confirm-title" (cancel)="$event.preventDefault(); dismissConfirmation()">
   @if (selected(); as selection) {
-    <h2 id="confirm-title">¿{{ labels[selection.action] }} este bono?</h2>
-    <app-notification />
-    <p class="confirmation-employee">{{ selection.bonus.fullName }}</p>
-    <dl class="confirmation-details">
-      <div><dt>Periodo</dt><dd>{{ selection.bonus.period }}</dd></div>
-      <div><dt>Bruto</dt><dd>{{ money(selection.bonus.grossAmount) }}</dd></div>
-    </dl>
-    <p class="confirmation-consequence">{{ consequences[selection.action] }}</p>
-    <footer class="form-actions">
+    <header class="modal-header"><h2 id="confirm-title">¿{{ labels[selection.action] }} este bono?</h2></header>
+    <div class="modal-body">
+      <app-notification />
+      <dl class="summary">
+        <div><dt>Empleado</dt><dd>{{ selection.bonus.fullName }}</dd></div>
+        <div><dt>Código</dt><dd>{{ selection.bonus.departmentCode }}-{{ selection.bonus.employeeNumber }}</dd></div>
+        <div><dt>Periodo</dt><dd>{{ selection.bonus.period }}</dd></div>
+        <div><dt>Bruto</dt><dd>{{ money(selection.bonus.grossAmount) }}</dd></div>
+      </dl>
+      <p class="muted">{{ consequences[selection.action] }}</p>
+    </div>
+    <footer class="modal-footer">
       <button type="button" class="btn" autofocus (click)="dismissConfirmation()">Volver</button>
-      <button type="button" [class]="'btn btn-' + selection.action" (click)="confirmChange()">{{ labels[selection.action] }} bono</button>
+      <button type="button" [class]="'btn ' + (selection.action === 'pay' ? 'btn-primary' : 'btn-danger')" (click)="confirmChange()">{{ labels[selection.action] }} bono</button>
     </footer>
   }
 </dialog>

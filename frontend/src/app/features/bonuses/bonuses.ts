@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, finalize, of, startWith, Subject, switchMap } from 'rxjs';
@@ -9,12 +10,12 @@ import { BonusApi } from '../../core/services/bonus-api';
 import { CatalogApi } from '../../core/services/catalog-api';
 import { Notification } from '../../core/services/notification';
 import { NotificationBanner } from '../../core/notification-banner';
-import { money } from './bonus-preview';
+import { money, percent, periodPattern } from './bonus-preview';
 import { RegisterBonus } from './register-bonus';
 
 @Component({
   selector: 'app-bonuses',
-  imports: [ReactiveFormsModule, RegisterBonus, NotificationBanner],
+  imports: [ReactiveFormsModule, CdkMenu, CdkMenuItem, CdkMenuTrigger, RegisterBonus, NotificationBanner],
   templateUrl: './bonuses.html',
   styleUrl: './bonuses.css',
 })
@@ -27,7 +28,7 @@ export class Bonuses {
   private applied: BonusFilter = {};
   protected readonly form = inject(FormBuilder).nonNullable.group({
     departmentCode: '', employeeNumber: ['', [Validators.pattern(/^[1-9]\d*$/), Validators.max(2147483647)]],
-    period: '', stateCode: '',
+    period: ['', Validators.pattern(periodPattern)], stateCode: '',
   });
   protected readonly loading = signal(false);
   protected readonly failed = signal(false);
@@ -37,15 +38,16 @@ export class Bonuses {
   protected readonly selected = signal<{ bonus: Bonus; action: 'pay' | 'cancel' | 'delete' } | null>(null);
   protected readonly labels = { pay: 'Pagar', cancel: 'Anular', delete: 'Eliminar' };
   protected readonly consequences = {
-    pay: 'Se repartirá el bruto entre los proyectos y el bono quedará Pagado.',
-    cancel: 'El bono quedará Anulado y se conservará en el listado.',
-    delete: 'El bono dejará de aparecer en el listado. Se conservará su historial.',
+    pay: 'El bruto se repartirá entre los proyectos del empleado según sus horas y el bono quedará Pagado.',
+    cancel: 'El bono quedará Anulado: seguirá en el listado, pero ya no admitirá cambios.',
+    delete: 'El bono dejará de aparecer en el listado, aunque su registro se conserva.',
   };
   protected readonly page = signal<PagedResponse<Bonus> | null>(null);
   protected readonly money = money;
   protected readonly states = BonusStates;
   protected readonly types = BonusTypes;
-  protected percent(value: string) { return value.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, ''); }
+  protected readonly percent = percent;
+  protected get filtered() { return Object.keys(this.applied).length > 0; }
 
   protected readonly departments = toSignal(this.catalogApi.getDepartments().pipe(catchError(() => of([]))), { initialValue: [] });
   protected readonly bonusStates = toSignal(this.catalogApi.getStates(MasterStateCodes.Bonus).pipe(catchError(() => of([]))), { initialValue: [] });
@@ -54,7 +56,6 @@ export class Bonuses {
     this.requests.pipe(startWith(1), switchMap(page => {
       this.loading.set(true);
       this.failed.set(false);
-      this.page.set(null);
       return this.api.list(this.applied, page).pipe(
         catchError(() => { this.failed.set(true); return of(null); }),
         finalize(() => this.loading.set(false)),
@@ -85,7 +86,8 @@ export class Bonuses {
     this.selected.set({ bonus, action });
     // El contenido debe estar listo antes de recibir el foco.
     this.changeDetector.detectChanges();
-    this.confirmation().nativeElement.showModal();
+    // Se abre cuando el menú ya devolvió el foco a su botón; así el diálogo lo recupera al cerrarse.
+    queueMicrotask(() => this.confirmation().nativeElement.showModal());
   }
 
   protected dismissConfirmation() {

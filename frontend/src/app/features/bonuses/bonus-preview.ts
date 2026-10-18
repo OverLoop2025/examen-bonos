@@ -2,6 +2,8 @@ import { BonusTypes } from '../../core/models/catalog';
 
 const scale = 10n ** 14n;
 
+export const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 function decimal(value: string): bigint | null {
   if (!/^\d{1,14}(\.\d{1,14})?$/.test(value)) return null;
   const [whole, fraction = ''] = value.split('.');
@@ -38,4 +40,8 @@ export function money(value: string): string {
   if (amount === null) return '—';
   const [whole, fraction] = fixed(round(amount * 100n, scale)).split('.');
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction}`;
+}
+
+export function percent(value: string): string {
+  return value.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 }

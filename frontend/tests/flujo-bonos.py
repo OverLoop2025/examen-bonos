@@ -83,7 +83,8 @@ async def main():
 
         async def action(name, method, suffix):
             before = sum(m == method and u.endswith(suffix) for m, u in mutations)
-            await page.locator('tbody tr').first.get_by_role('button', name=name, exact=True).click()
+            await page.locator('tbody tr').first.get_by_role('button', name='Acciones').click()
+            await page.get_by_role('menuitem', name=name, exact=True).click()
             confirmation = page.get_by_role('dialog', name='¿' + name + ' este bono?')
             await expect(confirmation.get_by_text('Andrea Torres Vega', exact=True)).to_be_visible()
             async with page.expect_response(lambda r: r.request.method == method and r.url.endswith(suffix)) as response:
@@ -93,25 +94,27 @@ async def main():
 
         try:
             await page.goto(url + '/bonuses')
-            await expect(page.get_by_text('No hay bonos para los filtros seleccionados.')).to_be_visible()
+            await expect(page.get_by_text('Aún no hay bonos registrados.')).to_be_visible()
             paid = await register('1999-01')
             await expect(page.locator('tbody tr')).to_have_count(1)
-            pay = page.get_by_role('button', name='Pagar', exact=True)
+            menu = page.locator('tbody tr').first.get_by_role('button', name='Acciones')
+            pay = page.get_by_role('menuitem', name='Pagar', exact=True)
+            await menu.click()
             await pay.click()
             confirmation = page.get_by_role('dialog', name='¿Pagar este bono?')
             await expect(confirmation).to_be_visible()
             await expect(confirmation.get_by_role('button', name='Volver')).to_be_focused()
             await confirmation.get_by_role('button', name='Volver').click()
-            await expect(pay).to_be_focused()
+            await expect(menu).to_be_focused()
+            await menu.click()
             await pay.click()
             await page.keyboard.press('Escape')
             await expect(confirmation).not_to_be_visible()
-            await expect(pay).to_be_focused()
+            await expect(menu).to_be_focused()
             assert sql(f'SELECT StateCode FROM dbo.Bonus WHERE BonusId={paid};') == '0201'
             await action('Pagar', 'POST', '/pay')
             await expect(page.locator('tbody').get_by_text('Pagado', exact=True)).to_be_visible()
-            for name in ('Pagar', 'Anular', 'Eliminar'):
-                await expect(page.locator('tbody').get_by_role('button', name=name, exact=True)).to_be_disabled()
+            await expect(menu).to_be_disabled()
             assert sql(f'SELECT CAST(SUM(Amount) AS varchar(30)) FROM dbo.BonusAllocation WHERE BonusId={paid};') == '500.00'
             assert sql(f"SELECT COUNT(*) FROM dbo.Bonus WHERE BonusId={paid} AND StateCode='0202' AND ModifiedBy=N'{operator}' AND ModifiedAt>=CreatedAt;") == '1'
             await register('1999-01', status=409)
