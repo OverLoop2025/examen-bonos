@@ -4,7 +4,7 @@ Módulo de Recursos Humanos para registrar bonos por periodo. Busca al empleado,
 
 ## Iniciar en un paso
 
-Solo necesitas [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto, con al menos 4 GB de memoria. No hace falta instalar .NET, Node ni SQL Server.
+Solo necesitas [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto, con al menos 4 GB de memoria. No hace falta instalar .NET, Node ni SQL Server. En una Mac con chip Apple, activa en Docker Desktop la emulación x86/amd64 (Rosetta), porque la imagen de SQL Server es solo x64.
 
 ```bash
 git clone https://github.com/OverLoop2025/examen-bonos.git
@@ -16,13 +16,15 @@ Cuando el comando termine, abre **http://localhost:4200/bonuses**. La API se pue
 
 - La primera vez descarga imágenes y paquetes, así que tarda unos minutos y necesita internet.
 - La base se crea sola: los scripts `01_schema_seed.sql`, `02_bonus.sql` y `03_bonus_allocation.sql` se ejecutan en ese orden, solo si su tabla aún no existe.
-- Si los puertos 4200, 5106 o 14333 están ocupados, copia `.env.example` como `.env` y cámbialos ahí. En ese archivo también puedes definir otra contraseña para SQL Server (si lo haces, defínela antes del primer arranque).
+- Si los puertos 4200, 5106 o 14333 están ocupados, copia `.env.example` como `.env` y cámbialos ahí.
+- Sin `.env`, SQL Server usa el usuario `sa` con la contraseña de desarrollo `BonosLocal2026`. Es pública a propósito: la base solo escucha en el propio equipo. Si prefieres otra, ponla en `SA_PASSWORD` dentro de `.env` antes del primer arranque (al menos 8 caracteres con mayúsculas, minúsculas y números, sin comillas ni `;`). Si ya lo habías iniciado, borra antes los datos con `docker compose down -v`.
 
 | Para | Comando |
 |------|---------|
 | Detener | `docker compose stop` |
 | Volver a iniciar | `docker compose up -d --wait` |
 | Borrar todo, incluidos los datos | `docker compose down -v` |
+| Ver por qué no arranca | `docker compose ps -a` y `docker compose logs --tail 80` |
 
 ## Empleados de prueba
 
@@ -53,6 +55,12 @@ En el buscador se escribe el área y **solo el número**, por ejemplo Tecnologí
 
 Los filtros son opcionales: **Buscar** los aplica y **Limpiar** los quita. Cada página muestra 10 bonos y el total de registros.
 
+Para revisar la base, por ejemplo el reparto de un pago:
+
+```bash
+docker compose exec db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d BonusTest -Q "SELECT * FROM BonusAllocation"
+```
+
 ## Sin Docker
 
 Necesitas SQL Server 2019 o posterior (también sirve LocalDB), [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) y [Node.js 24](https://nodejs.org/) (24.15 o posterior).
@@ -69,7 +77,7 @@ dotnet test --solution backend/BonusTest.slnx
 npm --prefix frontend test
 ```
 
-Las pruebas del cálculo y del reparto no necesitan base de datos. Las de persistencia y API se ejecutan cuando existen `ConnectionStrings__BonusTest` y `BONUS_API_URL`; si faltan, aparecen como omitidas.
+Las pruebas del cálculo y del reparto no necesitan base de datos. Las de persistencia y API se ejecutan cuando existen `ConnectionStrings__BonusTest` y `BONUS_API_URL`; si faltan, aparecen como omitidas. Con Docker iniciado, sus valores son `Server=127.0.0.1,14333;Database=BonusTest;User Id=sa;Password=BonosLocal2026;TrustServerCertificate=True` y `http://localhost:5106`.
 
 En cada envío, [GitHub Actions](https://github.com/OverLoop2025/examen-bonos/actions) construye todo desde cero, recorre la pantalla en un navegador real, ejecuta ambas suites y comprueba que los datos iniciales no cambien ([comprobar.yml](.github/workflows/comprobar.yml)).
 
