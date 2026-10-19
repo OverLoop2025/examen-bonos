@@ -68,7 +68,7 @@
           </label>
         </div>
         @if (form.controls.period.touched && invalidPeriod) { <p class="error">El periodo es obligatorio y no puede ser posterior al mes actual.</p> }
-        @if (form.controls.value.touched && !preview()) {
+        @if (employee() && form.controls.value.touched && !preview()) {
           <p class="error">{{ isPercentage ? 'Ingresa un porcentaje mayor que 0 y hasta 100' : 'Ingresa un monto mayor que 0 y no mayor al sueldo mensual' }}, con 14 decimales como máximo.</p>
         }
         @if (submitted() && form.controls.reasonCode.invalid) { <p class="error">Selecciona un motivo.</p> }
